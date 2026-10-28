@@ -1,0 +1,170 @@
+{
+  "_comment": "Zdroj pre stránky revírov. Spustite: python3 tools/build_reviry.py. 'type' sa dopočíta z čísla revíru (tretie číslo 1 = kaprový, 5 = lipňový), ak chýba.",
+  "demo": true,
+  "reviry": [
+    {
+      "name": "Aszódsky kanál č. 2",
+      "number": "2-0040-1-1"
+    },
+    {
+      "name": "Aszódsky kanál č. 3",
+      "number": "2-0050-1-1"
+    },
+    {
+      "name": "Bebrava č. 1",
+      "number": "2-0090-1-1"
+    },
+    {
+      "name": "Bebrava č. 2",
+      "number": "2-0100-1-1"
+    },
+    {
+      "name": "Berecký prívodný kanál",
+      "number": "4-0071-1-1"
+    },
+    {
+      "name": "Biela Orava č. 1a",
+      "number": "3-0070-1-1"
+    },
+    {
+      "name": "Biela Orava č. 1b",
+      "number": "3-0071-1-4"
+    },
+    {
+      "name": "Biela Orava č. 2",
+      "number": "3-0080-5-1"
+    },
+    {
+      "name": "Biskupický kanál č. 8",
+      "number": "2-4432-1-1"
+    },
+    {
+      "name": "Blava č. 1",
+      "number": "2-0130-1-1"
+    },
+    {
+      "name": "Blh č. 1",
+      "number": "3-0200-1-1"
+    },
+    {
+      "name": "Bodrog č. 1a",
+      "number": "4-0140-1-1"
+    },
+    {
+      "name": "Bodrog č. 1b",
+      "number": "4-0141-1-1"
+    },
+    {
+      "name": "Bodva č. 1",
+      "number": "4-0150-1-1"
+    },
+    {
+      "name": "Bodva č. 2",
+      "number": "4-0160-1-1"
+    },
+    {
+      "name": "Brusník",
+      "number": "4-0200-1-1"
+    },
+    {
+      "name": "Bystrica č. 1a",
+      "number": "3-0380-5-4"
+    },
+    {
+      "name": "Bystrica č. 1b",
+      "number": "3-0381-5-1"
+    },
+    {
+      "name": "Cergát č. 1",
+      "number": "2-0230-1-1"
+    },
+    {
+      "name": "Cergát č. 2",
+      "number": "2-0240-1-1"
+    },
+    {
+      "name": "Spojovací kanál Cergát – Váh",
+      "number": "2-2670-1-1"
+    },
+    {
+      "name": "Váh č. 1",
+      "number": "2-4360-1-1"
+    },
+    {
+      "name": "Váh č. 2",
+      "number": "2-4370-1-1"
+    },
+    {
+      "name": "Váh č. 7",
+      "number": "2-4420-1-1"
+    },
+    {
+      "name": "Nitra č. 1",
+      "number": "2-1400-1-1"
+    },
+    {
+      "name": "Nitra č. 2",
+      "number": "2-1410-1-1"
+    },
+    {
+      "name": "OR Berek",
+      "number": "2-1520-1-1"
+    },
+    {
+      "name": "Stará Nitra č. 2",
+      "number": "2-2700-1-1"
+    },
+    {
+      "name": "Stará Nitra č. 3",
+      "number": "2-1411-1-1"
+    },
+    {
+      "name": "Chrenovka",
+      "number": "2-0260-1-1"
+    },
+    {
+      "name": "Štrkovisko Záhoň",
+      "number": "2-4250-1-1"
+    },
+    {
+      "name": "Kanál Stará Gúta",
+      "number": "2-1000-1-1"
+    },
+    {
+      "name": "Žitava č. 1",
+      "number": "2-5600-1-1"
+    },
+    {
+      "name": "Žitava č. 2",
+      "number": "2-5610-1-1"
+    },
+    {
+      "name": "Žitava č. 3",
+      "number": "2-5620-1-1"
+    },
+    {
+      "name": "Stará Žitava",
+      "number": "2-2710-1-1"
+    },
+    {
+      "name": "Malý Dunaj č. 1",
+      "number": "2-1190-1-1"
+    },
+    {
+      "name": "Hlavný kanál Csóványos",
+      "number": "2-0680-1-1"
+    },
+    {
+      "name": "VN Liptovská Mara",
+      "number": "3-5340-1-1",
+      "organization": "SRZ Rada Žilina",
+      "season": "1. 6. – 14. 3.",
+      "area": "2 160 ha",
+      "description": "Vodná plocha nádrže (2160 ha) od priehradného telesa po železničný most pri ústí Váhu do VN. Zákaz rybolovu v okruhu 100 m od klietkových chovov rýb. Celoročný zákaz lovu z vtáčieho ostrova a umelého ostrovčeka a poloostrova Ratkovie po celom jeho obvode. Od 1.1. do 30.6. zákaz lovu rýb v Ratkovskej zátoke od bóji ohraničujúcich vnútorný okraj klietkového chovu – neresisko rýb v teréne označené tabuľami. Celoročný zákaz rybolovu nad a pod hrádzovým telesom vo vzdialenosti vyznačenej tabuľami. Zákaz lovu z priehradného telesa vodnej stavby a jej funkčných objektov. Na celej vodnej nádrži je zakázaný vjazd a státie motorovými vozidlami a karavanmi v zátopovom území, t. j. pod kótu 564,89 B. p. v., čo predstavuje max. prevádzkovú hladinu VN Liptovská Mara. Na základe monitoringu zdravotného stavu voľne žijúcich rýb bol v roku 2017 na VN Liptovská Mara zaznamenaný zvýšený obsah ortuti vo vzorke boleňa dravého. Tento druh ryby je zakázané konzumovať.",
+      "outline": {
+        "viewBox": "12 1137 1056 792",
+        "d": "M350,1168 L370,1184 L374,1214 L382,1226 L380,1244 L398,1286 L398,1306 L404,1318 L424,1334 L424,1370 L434,1382 L436,1400 L448,1412 L458,1412 L470,1400 L478,1360 L500,1336 L508,1336 L520,1324 L520,1310 L536,1282 L538,1262 L544,1256 L550,1258 L556,1264 L556,1300 L562,1306 L556,1322 L572,1334 L614,1316 L622,1322 L632,1348 L646,1364 L622,1364 L592,1394 L598,1430 L580,1450 L596,1468 L586,1468 L568,1492 L586,1514 L664,1538 L718,1538 L722,1540 L706,1556 L722,1570 L742,1576 L796,1616 L818,1624 L836,1618 L868,1646 L896,1622 L884,1652 L884,1672 L902,1690 L934,1694 L958,1702 L988,1702 L1018,1714 L1010,1744 L1036,1774 L1040,1786 L1034,1804 L1018,1828 L1000,1822 L988,1834 L952,1898 L938,1894 L926,1900 L892,1886 L884,1886 L874,1894 L844,1886 L832,1892 L812,1888 L776,1874 L752,1852 L748,1856 L734,1852 L706,1834 L674,1832 L664,1826 L652,1838 L652,1850 L640,1846 L634,1852 L602,1852 L574,1840 L562,1816 L560,1792 L548,1780 L494,1772 L484,1780 L472,1772 L416,1774 L362,1768 L332,1778 L310,1774 L298,1786 L298,1798 L290,1798 L266,1772 L250,1772 L226,1790 L236,1834 L232,1846 L202,1846 L188,1840 L106,1784 L106,1748 L74,1640 L122,1598 L124,1580 L196,1522 L208,1504 L196,1480 L170,1456 L74,1448 L64,1438 L64,1424 L46,1408 L44,1394 L74,1364 L86,1376 L116,1376 L146,1388 L154,1396 L170,1396 L184,1384 L202,1390 L218,1376 L236,1372 L260,1346 L262,1328 L262,1306 L254,1294 L244,1252 L256,1250 L284,1270 L298,1262 L314,1244 L332,1184Z"
+      }
+    }
+  ]
+}

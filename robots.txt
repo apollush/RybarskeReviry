@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rybarskereviry.sk/sitemap.xml
