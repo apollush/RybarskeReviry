@@ -154,9 +154,9 @@
       pins: 'Len dva body na rieke. Nevidno, či prítok a štrkovisko patria do revíru, ani či ste v ňom.',
       polygon: 'Celá plocha revíru vrátane prítoku. Štrkovisko vedľa je iný revír.'
     };
-    const STAY = { pins: 3000, polygon: 6200 }; // how long each view stays before the next one
-    const FIRST = 1200; // the first switch, once the map comes into view
-    const PICKED = 4000; // extra time on a view someone chose
+    const STAY = { pins: 1700, polygon: 3400 }; // how long each view stays before the next one
+    const FIRST = 700; // the first switch, once the map comes into view
+    const PICKED = 2500; // extra time on a view someone chose
     let timer = null;
     let inView = !hasIO;
     let paused = reduceMotion;
