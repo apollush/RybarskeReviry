@@ -10,7 +10,7 @@ if ! python3 tools/build_reviry.py; then
   exit 1
 fi
 
-git add reviry.html revir assets/js/reviry-data.js sitemap.xml robots.txt
+git add reviry.html revir assets/js/reviry-data.js sitemap.xml robots.txt index.html privacy_policy.html
 if git diff --cached --quiet; then
   echo "Stránky revírov sú aktuálne, nie je čo nahrať."
 else

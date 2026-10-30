@@ -142,8 +142,9 @@
     }
   }
 
-  // Boundary map: "začiatok a koniec" and "presné hranice" take turns in a loop while the map is on
-  // screen. The pause button stops the loop, and so does choosing a view yourself
+  // Boundary map, looping like the hero while the map is on screen: the pins of "začiatok a koniec",
+  // then the exact boundary draws and fills in, holds, winds back to the pins and starts over.
+  // The pause button stops the loop, and so does choosing a view yourself
   const map = document.querySelector('[data-map]');
   if (map) {
     const buttons = document.querySelectorAll('[data-map-mode]');
@@ -153,7 +154,7 @@
       pins: 'Len dva body na rieke. Nevidno, či prítok a štrkovisko patria do revíru, ani či ste v ňom.',
       polygon: 'Celá plocha revíru vrátane prítoku. Štrkovisko vedľa je iný revír.'
     };
-    const STAY = { pins: 2800, polygon: 5600 }; // how long each view stays before the next one
+    const STAY = { pins: 3000, polygon: 6200 }; // how long each view stays before the next one
     const FIRST = 1200; // the first switch, once the map comes into view
     let timer = null;
     let inView = !hasIO;

@@ -1031,17 +1031,20 @@ html:not(.js) .anim-toggle { display: none; }
 .m-rev-line path { transition: stroke-dashoffset 1.5s var(--ease-out); }
 .m-pins { transition: opacity .25s ease; }
 
+/* Back to "začiatok a koniec": the area fades and the boundary winds back before the pins return */
 .map[data-mode="pins"] .m-rev-fill,
 .map[data-mode="pins"] .m-pit,
 .map[data-mode="pins"] .m-poly-labels {
   opacity: 0;
   transition-delay: 0s;
-  transition-duration: .2s;
+  transition-duration: .45s;
 }
 .map[data-mode="pins"] .m-rev-line path {
   stroke-dashoffset: 1;
-  transition-duration: .25s;
+  transition-duration: .7s;
+  transition-timing-function: cubic-bezier(.65, 0, .35, 1);
 }
+.map[data-mode="pins"] .m-pins { transition-delay: .45s; }
 .map[data-mode="polygon"] .m-pins { opacity: 0; }
 
 @media (min-width: 1024px) {

@@ -14,10 +14,13 @@ Outputs
   revir/<slug>.html         one page per revír (what people land on from Google)
   assets/js/reviry-data.js  small search index (name, number, character, slug)
   sitemap.xml, robots.txt
+Every CSS and JS link, also in index.html and privacy_policy.html, gets ?v=<content hash>, so after a
+change browsers load the new file instead of an old cached copy.
 Public lookup files: data/organizacie.json (organization names), data/slovensko.json (map of Slovakia).
 """
 import argparse
 import functools
+import hashlib
 import html
 import json
 import math
@@ -663,6 +666,19 @@ def main():
                             + "".join(f"  <url><loc>{u}</loc></url>\n" for u in urls) + "</urlset>\n")
     files["robots.txt"] = f"User-agent: *\nAllow: /\n\nSitemap: {SITE}sitemap.xml\n"
 
+    # CSS and JS links carry ?v=<content hash>: a changed file gets a new address, so browsers (and
+    # the site preview) load it instead of an old cached copy. The hand-written pages are kept current too
+    for path in ("index.html", "privacy_policy.html"):
+        files[path] = (ROOT / path).read_text(encoding="utf-8")
+    versions = {}
+    for path in ("assets/css/style.css", "assets/js/main.js", "assets/js/reviry.js", "assets/js/reviry-data.js"):
+        content = files.get(path) or (ROOT / path).read_text(encoding="utf-8")
+        versions[path] = hashlib.sha1(content.encode("utf-8")).hexdigest()[:8]
+    asset_link = re.compile(r'(assets/(?:css|js)/[\w.-]+\.(?:css|js))(?:\?v=\w+)?"')
+    stamp = lambda m: f'{m.group(1)}?v={versions[m.group(1)]}"' if m.group(1) in versions else m.group(0)
+    for path in [p for p in files if p.endswith(".html")]:
+        files[path] = asset_link.sub(stamp, files[path])
+
     # A revír page shows only its own point; the list, the search index and the sitemap show none,
     # so the coordinates of the whole database never sit together in one file
     def coord_strings(r):
@@ -688,7 +704,7 @@ def main():
             target.write_text(content, encoding="utf-8")
     kapr = sum(r["type"] == "kaprovy" for r in reviry)
     print(f"{len(reviry)} revírov ({kapr} kaprových, {len(reviry) - kapr} lipňových): "
-          "reviry.html, revir/*.html, assets/js/reviry-data.js, sitemap.xml, robots.txt")
+          "reviry.html, revir/*.html, assets/js/reviry-data.js, sitemap.xml, robots.txt, verzie CSS a JS v index.html a privacy_policy.html")
 
 
 if __name__ == "__main__":
