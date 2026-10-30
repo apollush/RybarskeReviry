@@ -5,17 +5,19 @@ Run from the project folder:  python3 tools/build_reviry.py [--xml PATH]
 The database is private: it lives outside the website, in ../RybarskeReviry-databaza/reviry.xml
 (or the path in --xml / the REVIRY_XML environment variable), and is never copied to the site.
 Only what a visitor sees on a revír page is published: name, number, character of the water,
-type of water, organization, area, border flag and the description. Coordinates stay private;
-they are only used here to pick the "revíry v okolí" links.
+type of water, organization, area, border flag, the description and the revír's location (one point
+on the map, never its boundaries). Each revír page carries only its own point; the list, the search
+index and the sitemap carry no coordinates, so the database can't be pulled from any one file.
 
 Outputs
   reviry.html               list of all revíry with search and filters
   revir/<slug>.html         one page per revír (what people land on from Google)
   assets/js/reviry-data.js  small search index (name, number, character, slug)
   sitemap.xml, robots.txt
-Public lookup files: data/organizacie.json (organization names), data/obrysy.json (revír shapes).
+Public lookup files: data/organizacie.json (organization names), data/slovensko.json (map of Slovakia).
 """
 import argparse
+import functools
 import html
 import json
 import math
@@ -139,7 +141,6 @@ def load_json(name):
 
 def load_reviry(xml_path):
     organizations = load_json("organizacie.json")
-    outlines = load_json("obrysy.json")
     warnings = []
 
     def org_name(code):
@@ -180,7 +181,6 @@ def load_reviry(xml_path):
             "area": area_from(description),
             "description": description,
             "center": center,
-            "outline": outlines.get(number),
         })
 
     numbers = [r["number"] for r in reviry]
@@ -344,35 +344,71 @@ def cta_band(cta, count):
     </section>"""
 
 
+# Map of Slovakia on a revír page: equirectangular, x squeezed by cos 48.7° (the middle of Slovakia)
+MAP_VIEWBOX = "0 0 1000 530"
+
+
+def project(lon, lat):
+    return (lon - 16.80) * math.cos(math.radians(48.7)) * 245.4 + 30, (49.66 - lat) * 245.4 + 20
+
+
+def gps(r):
+    """The revír's point as people type it into a map app: 48.74690, 17.81230"""
+    lat, lon = r["center"]
+    return f"{lat:.5f}, {lon:.5f}"
+
+
+def maps_url(r):
+    return "https://www.google.com/maps/search/?api=1&query=" + gps(r).replace(", ", "%2C")
+
+
+@functools.lru_cache(maxsize=None)
+def slovakia():
+    """The parts of the map that are the same on every page: border, Danube, regional towns."""
+    data = load_json("slovensko.json")
+    line = lambda pts: " ".join(f"{x:.1f} {y:.1f}" for x, y in (project(*p) for p in pts))
+    lx, ly = project(*data["dunaj_popis"])
+    towns = [(t["nazov"], *project(*t["poloha"]), t.get("minor", False)) for t in data["mesta"]]
+    return (f"M{line(data['hranica'])}Z", f"M{line(data['dunaj'])}", (lx, ly), towns)
+
+
 def map_figure(r):
     name = nbsp(r["name"])
-    if r.get("outline"):
-        o = r["outline"]
-        x, y, w, h = (float(v) for v in o["viewBox"].split())
-        return f"""        <figure class="revir-map revir-map--shape">
-          <svg viewBox="{o['viewBox']}" role="img" aria-label="Tvar revíru {esc(r['name'])}">
-            <rect class="m-land" x="{x}" y="{y}" width="{w}" height="{h}"/>
-            <path class="revir-map__fill" d="{o['d']}"/>
-            <path class="revir-map__line" d="{o['d']}"/>
+    border, danube, (lx, ly), towns = slovakia()
+    pin, place = "", ""
+    if r["center"]:
+        px, py = project(r["center"][1], r["center"][0])
+        pin = f"""
+            <g class="loc-pin" transform="translate({px:.1f} {py:.1f})">
+              <circle class="loc-pin__pulse" r="18"/>
+              <g class="loc-pin__drop"><path d="M0 0C-5-13-18-21-18-35a18 18 0 1 1 36 0C18-21 5-13 0 0Z"/><circle cy="-35" r="6.5"/></g>
+            </g>"""
+        place = f"""
+          <div class="revir-loc">
+            <p class="revir-loc__gps"><span>GPS</span> <span class="revir-loc__value" translate="no">{gps(r)}</span></p>
+            <a class="revir-loc__link" href="{esc(maps_url(r))}" target="_blank" rel="noopener">Otvoriť v&nbsp;Mapách Google<svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          </div>"""
+    town_marks = []
+    for town, tx, ty, minor in towns:
+        # A town whose dot or name would sit under the pin is left out
+        if r["center"] and tx - 8 < px + 24 and px - 24 < tx + 14 + 13 * len(town) and ty - 20 < py + 22 and py - 58 < ty + 14:
+            continue
+        cls = "loc-town loc-town--minor" if minor else "loc-town"
+        town_marks.append(f'<g class="{cls}"><circle cx="{tx:.1f}" cy="{ty:.1f}" r="5"/>'
+                          f'<text x="{tx + 11:.1f}" y="{ty + 8:.1f}">{esc(town)}</text></g>')
+    label = f"Poloha revíru {esc(r['name'])} na mape Slovenska" if r["center"] else "Mapa Slovenska"
+    return f"""        <figure class="revir-map">
+          <svg class="loc-map" viewBox="{MAP_VIEWBOX}" role="img" aria-label="{label}">
+            <path class="loc-land" d="{border}"/>
+            <path class="loc-danube" d="{danube}"/>
+            <text class="loc-hydro" x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle">Dunaj</text>
+            <g class="loc-towns">{''.join(town_marks)}</g>{pin}
           </svg>
-          <figcaption>Tvar revíru {name}. Na mape s&nbsp;navigáciou ho uvidíte v&nbsp;aplikácii.</figcaption>
-        </figure>"""
-    return f"""        <figure class="revir-map revir-map--locked">
-          <svg viewBox="0 0 600 400" aria-hidden="true" focusable="false">
-            <defs><filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="7"/></filter></defs>
-            <rect class="m-land" width="600" height="400"/>
-            <g class="m-contours">
-              <path d="M40 60c60-30 150-20 190 20s10 90-60 100-170-20-160-60 0-40 30-60Z"/>
-              <path d="M70 75c45-20 115-12 140 15s5 62-45 70-120-14-115-42 0-28 20-43Z"/>
-              <path d="M430 290c50-30 130-25 160 10s0 80-70 85-140-20-130-55 10-25 40-40Z"/>
-            </g>
-            <path class="m-road" d="M380 -10 L420 120 L470 260 Q500 340 520 420"/>
-            <path class="revir-map__river" d="M-20 300 C90 260 150 330 250 290 S420 160 520 190 S640 140 640 140"/>
-            <path class="revir-map__blur" d="M-20 300 C90 260 150 330 250 290 S420 160 520 190 S640 140 640 140" pathLength="1" filter="url(#soft)"/>
-          </svg>
-          <figcaption>
+          <figcaption>{place}
+          <p class="revir-map__note">
             <span class="revir-map__lock"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg></span>
             <span>Presné hranice revíru {name} sú zakreslené v&nbsp;aplikácii.</span>
+          </p>
           </figcaption>
         </figure>"""
 
@@ -485,18 +521,22 @@ def detail_page(r, reviry):
     water = f", {r['water'].lower()}" if r["water"] else ""
     org = f", {r['organizations'][0]}" if r["organizations"] else ""
     description = (f"{r['name']}, číslo revíru {r['number']}. {t['adj'].capitalize()} zväzový revír SRZ{water}{org}. "
-                   f"Popis revíru a presné hranice na mape v aplikácii Rybárske Revíry SK.")
+                   f"Poloha revíru na mape, popis a presné hranice v aplikácii Rybárske Revíry SK.")
     canonical = f"{SITE}revir/{r['slug']}.html"
+    water_ld = {
+        "@type": "BodyOfWater",
+        "name": r["name"],
+        "identifier": {"@type": "PropertyValue", "propertyID": "Číslo revíru SRZ", "value": r["number"]},
+        "description": r["description"] or f"{t['label']} SRZ číslo {r['number']}.",
+        "url": canonical,
+    }
+    if r["center"]:
+        water_ld["geo"] = {"@type": "GeoCoordinates", "latitude": r["center"][0], "longitude": r["center"][1]}
+        water_ld["hasMap"] = maps_url(r)
     ld = {
         "@context": "https://schema.org",
         "@graph": [
-            {
-                "@type": "BodyOfWater",
-                "name": r["name"],
-                "identifier": {"@type": "PropertyValue", "propertyID": "Číslo revíru SRZ", "value": r["number"]},
-                "description": r["description"] or f"{t['label']} SRZ číslo {r['number']}.",
-                "url": canonical,
-            },
+            water_ld,
             {
                 "@type": "BreadcrumbList",
                 "itemListElement": [
@@ -623,11 +663,18 @@ def main():
                             + "".join(f"  <url><loc>{u}</loc></url>\n" for u in urls) + "</urlset>\n")
     files["robots.txt"] = f"User-agent: *\nAllow: /\n\nSitemap: {SITE}sitemap.xml\n"
 
-    # Coordinates must never reach the website
-    coords = {f"{c:.4f}".rstrip("0") for r in reviry if r["center"] for c in r["center"]}
-    leak = re.compile("|".join(re.escape(c) for c in coords if len(c) > 5)) if coords else None
-    if leak and any(leak.search(content) for content in files.values()):
-        raise SystemExit("Chyba: do stránok by sa dostali súradnice revírov, nič sa nezapísalo.")
+    # A revír page shows only its own point; the list, the search index and the sitemap show none,
+    # so the coordinates of the whole database never sit together in one file
+    def coord_strings(r):
+        if not r or not r["center"]:
+            return set()
+        return {s.rstrip("0") for c in r["center"] for s in (f"{c:.4f}", f"{c:.5f}"[:-1])}
+    own = {f"revir/{r['slug']}.html": coord_strings(r) for r in reviry}
+    known = {s for r in reviry for s in coord_strings(r) if len(s) > 5}
+    leak = re.compile("|".join(sorted(map(re.escape, known), key=len, reverse=True))) if known else None
+    for path, content in files.items():
+        if leak and set(leak.findall(content)) - own.get(path, set()):
+            raise SystemExit(f"Chyba: do {path} by sa dostali súradnice iných revírov, nič sa nezapísalo.")
 
     out_dir = ROOT / "revir"
     out_dir.mkdir(exist_ok=True)

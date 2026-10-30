@@ -921,6 +921,7 @@ html:not(.js) .anim-toggle { display: none; }
 .where strong { color: var(--on-dark); }
 
 .map {
+  position: relative;
   overflow: hidden;
   border: 1px solid var(--line-dark);
   border-radius: var(--radius-lg);
@@ -1008,7 +1009,16 @@ html:not(.js) .anim-toggle { display: none; }
   fill: rgba(255, 255, 255, .3);
   transform-box: fill-box;
   transform-origin: center;
-  animation: gps-pulse 2.4s ease-out 4;
+  animation: gps-pulse 2.4s ease-out infinite;
+}
+.map.is-paused .m-gps__pulse { animation: none; opacity: 0; }
+
+/* Pause control for the looping map, top right corner of the map */
+.anim-toggle--map {
+  top: 14px;
+  right: 14px;
+  left: auto;
+  border-color: var(--line-dark);
 }
 @keyframes gps-pulse {
   from { transform: scale(.7); opacity: 1; }
@@ -1878,26 +1888,87 @@ html:not(.js) .tour-panel[hidden] { display: grid; }
 }
 .revir-map svg { width: 100%; height: auto; }
 .revir-map figcaption {
+  font-size: .9375rem;
+  line-height: 1.45;
+}
+.revir-map__note {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 14px 18px;
   border-top: 1px solid var(--line-dark);
-  font-size: .9375rem;
-  line-height: 1.45;
 }
-.revir-map__fill { fill: var(--map-poly); fill-opacity: .45; }
-.revir-map__line { fill: none; stroke: var(--map-poly); stroke-width: 6; stroke-linejoin: round; }
-.revir-map__river { fill: none; stroke: var(--map-water); stroke-width: 22; stroke-linecap: round; }
-.revir-map__blur {
-  fill: none;
-  stroke: var(--map-poly);
-  stroke-width: 40;
-  stroke-linecap: round;
-  stroke-dasharray: .45 1;
-  stroke-dashoffset: -.28;
-  opacity: .6;
+
+/* Where the revír is: one point on the map of Slovakia (its boundaries stay in the app) */
+.loc-map { display: block; font-family: var(--font); }
+.loc-land {
+  fill: rgba(234, 242, 239, .07);
+  stroke: rgba(234, 242, 239, .4);
+  stroke-width: 2;
+  stroke-linejoin: round;
 }
+.loc-danube { fill: none; stroke: var(--map-water); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+.loc-hydro { fill: #9CCFDA; font-size: 22px; font-style: italic; font-weight: 500; letter-spacing: .08em; }
+.loc-town circle { fill: var(--on-dark-2); }
+.loc-town text { fill: var(--on-dark-2); font-size: 23px; font-weight: 600; }
+.loc-pin__drop path { fill: #fff; }
+.loc-pin__drop circle { fill: var(--map-land); }
+.loc-pin__pulse {
+  fill: rgba(143, 166, 255, .45);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: gps-pulse 2.4s ease-out .5s 3 backwards;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .loc-pin__drop { animation: pin-drop .55s cubic-bezier(.34, 1.4, .64, 1) both; }
+}
+@keyframes pin-drop {
+  from { opacity: 0; transform: translateY(-36px); }
+  to { opacity: 1; transform: none; }
+}
+.loc-pin__drop { transform-box: fill-box; transform-origin: 50% 100%; }
+@media (max-width: 559px) {
+  .loc-pin__drop,
+  .loc-pin__pulse { scale: 1.5; }
+  .loc-town--minor { display: none; }
+  .loc-town text { font-size: 32px; }
+  .loc-hydro { font-size: 30px; }
+}
+
+.revir-loc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line-dark);
+}
+.revir-loc__gps { display: flex; align-items: baseline; gap: 10px; }
+.revir-loc__gps > span:first-child {
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+}
+.revir-loc__value {
+  color: var(--on-dark);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+.revir-loc__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--on-dark);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(234, 242, 239, .35);
+  text-underline-offset: 4px;
+}
+.revir-loc__link:hover { text-decoration-color: currentColor; }
+.revir-loc__link .icon { width: 18px; height: 18px; }
 .revir-map__lock {
   display: grid;
   flex: none;

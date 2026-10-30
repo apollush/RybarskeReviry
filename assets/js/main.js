@@ -10,22 +10,36 @@
     window.addEventListener('scroll', onScroll, { passive: true });
   }
 
-  // Arriving from another page at a section (./#cena): land there at once, and again once images
-  // and fonts have settled, unless the visitor has already started scrolling
+  // Arriving from another page at a section (./#cena): land there at once. Inside a frame (the site
+  // preview) the viewer can keep the scroll position of the page before, which opened a revír at its
+  // bottom lists, so there a page without a section opens at its top. Checked again once images and
+  // fonts have settled and shortly after, unless the visitor has already started scrolling.
+  // Back/Forward and reload keep their position; a browser window on its own needs none of this
   const arrival = window.location.hash && document.getElementById(window.location.hash.slice(1));
-  if (arrival) {
+  const navEntry = (window.performance && performance.getEntriesByType && performance.getEntriesByType('navigation')[0]) || {};
+  const toTop = !arrival && window.self !== window.top && navEntry.type !== 'back_forward' && navEntry.type !== 'reload';
+  if (arrival || toTop) {
     let moved = false;
-    ['wheel', 'touchstart', 'keydown'].forEach((type) => {
+    ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach((type) => {
       window.addEventListener(type, () => { moved = true; }, { once: true, passive: true });
     });
     const land = () => {
       if (moved) return;
+      if (!arrival && window.scrollY === 0) return;
       document.documentElement.style.scrollBehavior = 'auto';
-      arrival.scrollIntoView({ block: 'start' });
+      if (arrival) {
+        arrival.scrollIntoView({ block: 'start' });
+      } else {
+        // The page's smooth scrolling would otherwise glide up from the bottom
+        try { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); } catch (e) { window.scrollTo(0, 0); }
+      }
       document.documentElement.style.scrollBehavior = '';
     };
     land();
-    window.addEventListener('load', land, { once: true });
+    window.addEventListener('load', () => {
+      land();
+      [150, 500].forEach((ms) => window.setTimeout(land, ms));
+    }, { once: true });
     if (document.fonts) document.fonts.ready.then(land);
   }
 
@@ -128,37 +142,68 @@
     }
   }
 
-  // Boundary map: pins only vs. exact polygon
+  // Boundary map: "začiatok a koniec" and "presné hranice" take turns in a loop while the map is on
+  // screen. The pause button stops the loop, and so does choosing a view yourself
   const map = document.querySelector('[data-map]');
   if (map) {
     const buttons = document.querySelectorAll('[data-map-mode]');
     const status = document.querySelector('[data-map-status]');
+    const mapToggle = map.querySelector('[data-map-toggle]');
     const messages = {
       pins: 'Len dva body na rieke. Nevidno, či prítok a štrkovisko patria do revíru, ani či ste v ňom.',
       polygon: 'Celá plocha revíru vrátane prítoku. Štrkovisko vedľa je iný revír.'
     };
-    let touched = false;
+    const STAY = { pins: 2800, polygon: 5600 }; // how long each view stays before the next one
+    const FIRST = 1200; // the first switch, once the map comes into view
+    let timer = null;
+    let inView = !hasIO;
+    let paused = reduceMotion;
+    let played = false;
 
-    const setMode = (mode) => {
+    // The loop changes the text silently; screen readers hear it only when someone picks a view
+    const setMode = (mode, announce) => {
       map.dataset.mode = mode;
       buttons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mapMode === mode)));
-      if (status) status.textContent = messages[mode];
+      if (status) {
+        status.setAttribute('aria-live', announce ? 'polite' : 'off');
+        status.textContent = messages[mode];
+      }
+    };
+    const clear = () => { window.clearTimeout(timer); timer = null; };
+    const next = () => {
+      setMode(map.dataset.mode === 'pins' ? 'polygon' : 'pins', false);
+      timer = window.setTimeout(next, STAY[map.dataset.mode]);
+    };
+    const start = () => {
+      if (timer || paused || !inView || document.hidden) return;
+      timer = window.setTimeout(next, played ? STAY[map.dataset.mode] : FIRST);
+      played = true;
+    };
+    const setPaused = (value) => {
+      paused = value;
+      map.classList.toggle('is-paused', value);
+      if (mapToggle) mapToggle.setAttribute('aria-pressed', String(value));
+      clear();
+      start();
     };
 
     buttons.forEach((b) => b.addEventListener('click', () => {
-      touched = true;
-      setMode(b.dataset.mapMode);
+      setPaused(true);
+      setMode(b.dataset.mapMode, true);
     }));
 
-    // Show the "before" state first, then draw the boundary once the map is in view
-    if (!reduceMotion && hasIO) {
-      setMode('pins');
-      const io = new IntersectionObserver((entries) => {
-        if (!entries.some((e) => e.isIntersecting)) return;
-        io.disconnect();
-        window.setTimeout(() => { if (!touched) setMode('polygon'); }, 1200);
-      }, { threshold: 0.6 });
-      io.observe(map);
+    if (!reduceMotion) {
+      setMode('pins', false);
+      if (hasIO) {
+        new IntersectionObserver((entries) => {
+          inView = entries[entries.length - 1].isIntersecting;
+          if (inView) start(); else clear();
+        }, { threshold: 0.6 }).observe(map);
+      } else {
+        start();
+      }
+      document.addEventListener('visibilitychange', () => (document.hidden ? clear() : start()));
+      if (mapToggle) mapToggle.addEventListener('click', () => setPaused(!paused));
     }
   }
 
