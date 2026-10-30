@@ -1922,6 +1922,7 @@ html:not(.js) .tour-panel[hidden] { display: grid; }
 .ticks--light .icon { color: #1F7A4D; }
 
 .revir-related { background: var(--paper); }
+.revir-related__sub { margin: 48px 0 16px; }
 .revir-related__head {
   display: flex;
   flex-wrap: wrap;

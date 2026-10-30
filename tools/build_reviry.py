@@ -1,20 +1,33 @@
-"""Builds the revír pages from data/reviry.json.
+"""Builds the revír pages from the app's private revír database (reviry.xml).
 
-Run from the project folder:  python3 tools/build_reviry.py
+Run from the project folder:  python3 tools/build_reviry.py [--xml PATH]
+
+The database is private: it lives outside the website, in ../RybarskeReviry-databaza/reviry.xml
+(or the path in --xml / the REVIRY_XML environment variable), and is never copied to the site.
+Only what a visitor sees on a revír page is published: name, number, character of the water,
+type of water, organization, area, border flag and the description. Coordinates stay private;
+they are only used here to pick the "revíry v okolí" links.
 
 Outputs
   reviry.html               list of all revíry with search and filters
   revir/<slug>.html         one page per revír (what people land on from Google)
-  assets/js/reviry-data.js  small search index for the homepage and list search
+  assets/js/reviry-data.js  small search index (name, number, character, slug)
   sitemap.xml, robots.txt
+Public lookup files: data/organizacie.json (organization names), data/obrysy.json (revír shapes).
 """
+import argparse
 import html
 import json
+import math
+import os
 import re
+import sys
 import unicodedata
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_XML = ROOT.parent / "RybarskeReviry-databaza" / "reviry.xml"
 SITE = "https://rybarskereviry.sk/"
 PRICE = "6,99&nbsp;€"
 PLAY = "https://play.google.com/store/apps/details?id=sk.rr.rybarskereviry"
@@ -23,6 +36,16 @@ TYPES = {
     "kaprovy": {"code": "k", "adj": "kaprový", "label": "Kaprový revír", "water": "Kaprové vody"},
     "lipnovy": {"code": "l", "adj": "lipňový", "label": "Lipňový revír", "water": "Lipňové vody"},
 }
+# <water_category> in the database: 5 = lipňové vody, everything else = kaprové vody (as in the app)
+LIPNOVE_CATEGORIES = {"5"}
+
+# <type_area> in the database -> type of water shown on the page
+TYPE_AREA = {
+    "11": "Rieka", "12": "Potok", "13": "Potok",
+    "20": "Rameno", "21": "Rameno", "23": "Mŕtve rameno", "24": "Odstavené rameno", "25": "Sústava ramien",
+    "30": "Kanál", "31": "Kanál", "32": "Kanál", "34": "Kanál", "35": "Kanál", "36": "Kanál", "37": "Kanál", "38": "Kanál",
+    "41": "Vodná nádrž", "42": "Vodná nádrž", "43": "Jazero", "45": "Štrkovisko", "48": "Zdrž vodného diela",
+}
 
 # Slovak alphabetical order (ch is its own letter after h; á, é, ... sort with their base letter)
 ALPHABET = ["a", "b", "c", "č", "d", "ď", "e", "f", "g", "h", "ch", "i", "j", "k", "l", "ľ", "m", "n", "ň",
@@ -30,23 +53,23 @@ ALPHABET = ["a", "b", "c", "č", "d", "ď", "e", "f", "g", "h", "ch", "i", "j", 
 FOLD = str.maketrans("áäéíĺóŕúý", "aaeiloruy")
 
 
-def letters(word):
-    word = word.lower().translate(FOLD)
-    out, i = [], 0
-    while i < len(word):
-        if word[i:i + 2] == "ch":
-            out.append("ch"); i += 2
-        else:
-            out.append(word[i]); i += 1
-    return out
-
-
 def sort_key(name):
-    return [ALPHABET.index(c) if c in ALPHABET else 100 + ord(c[0]) for c in letters(name)]
+    """Slovak order with numbers compared as numbers, so Váh č. 2 comes before Váh č. 10."""
+    key = []
+    for tok in re.findall(r"\d+|ch|.", name.lower().translate(FOLD)):
+        if tok.isdigit():
+            key.append((0, int(tok)))
+        elif tok in ALPHABET:
+            key.append((1, ALPHABET.index(tok)))
+        else:
+            # spaces and dashes before letters, so Dunaj č. 1 comes before Dunajec
+            key.append((1, -1 if not tok.isalnum() else 100 + ord(tok)))
+    return key
 
 
 def group_letter(name):
-    first = letters(name)[0]
+    first = name.lower().translate(FOLD)
+    first = "ch" if first.startswith("ch") else first[0]
     return first.upper() if first != "ch" else "Ch"
 
 
@@ -74,8 +97,104 @@ def play_url(content):
     return f"{PLAY}&amp;referrer=utm_source%3Drybarskereviry.sk%26utm_medium%3Dweb%26utm_content%3D{content}"
 
 
+def display_name(raw):
+    """'Váh č.17a' -> 'Váh č. 17a', 'Dunaj č.3 - Odpadový kanál' -> 'Dunaj č. 3 – Odpadový kanál'."""
+    name = " ".join(raw.split())
+    name = re.sub(r"č\.\s*(?=\S)", "č. ", name)
+    return name.replace(" - ", " – ")
+
+
 def base_name(name):
-    return re.sub(r"\s+č\.\s*\S+$", "", name)
+    return re.split(r"\s+č\.\s", name)[0]
+
+
+def plural(n, one, few, many):
+    return one if n == 1 else (few if 2 <= n <= 4 else many)
+
+
+def area_from(description):
+    """The area in hectares when the opening words give it, e.g. 'Vodná plocha nádrže (2160 ha)'.
+    Hectares further in the text belong to a side arm or a lake inside the revír, not the whole revír."""
+    m = re.search(r"\((\d[\d\s]*)(,\d+)?\s*ha\)", description)
+    if not m or m.start() > 60:
+        return ""
+    whole = int(re.sub(r"\s", "", m.group(1)))
+    return f"{whole:,}".replace(",", " ") + (m.group(2) or "") + " ha"
+
+
+def distance_km(a, b):
+    if not a["center"] or not b["center"]:
+        return math.inf
+    (lat1, lon1), (lat2, lon2) = a["center"], b["center"]
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    h = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 12742 * math.asin(math.sqrt(h))
+
+
+def load_json(name):
+    data = json.loads((ROOT / "data" / name).read_text(encoding="utf-8"))
+    data.pop("_comment", None)
+    return data
+
+
+def load_reviry(xml_path):
+    organizations = load_json("organizacie.json")
+    outlines = load_json("obrysy.json")
+    warnings = []
+
+    def org_name(code):
+        code = (code or "").strip()
+        if not code:
+            return ""
+        if code not in organizations:
+            warnings.append(f"neznáma organizácia {code} (doplňte ju do data/organizacie.json)")
+            return "SRZ MO " + code.replace("_", " ").title()
+        return organizations[code]
+
+    reviry = []
+    for el in ET.parse(xml_path).getroot().iter("revir"):
+        number = (el.findtext("number") or "").strip()
+        raw_name = (el.findtext("name") or "").strip()
+        if not number or not raw_name:
+            warnings.append(f"revír id={el.get('id')} nemá číslo alebo názov, vynechaný")
+            continue
+        description = " ".join((el.findtext("description") or "").split())
+        point = el.find("center_point")
+        try:
+            center = (float(point.get("lat")), float(point.get("lon"))) if point is not None else None
+        except (TypeError, ValueError):
+            center = None
+        type_area = (el.findtext("type_area") or "").strip()
+        name = display_name(raw_name)
+        water = TYPE_AREA.get(type_area, "")
+        if type_area == "43" and "nádrž" in name.lower():
+            water = "Vodná nádrž"
+        reviry.append({
+            "number": number,
+            "name": name,
+            "base": base_name(name),
+            "type": "lipnovy" if (el.findtext("water_category") or "").strip() in LIPNOVE_CATEGORIES else "kaprovy",
+            "water": water,
+            "organizations": [o for o in (org_name(el.findtext("organization")), org_name(el.findtext("organization_2"))) if o],
+            "border": (el.findtext("on_border") or "0").strip() not in ("", "0"),
+            "area": area_from(description),
+            "description": description,
+            "center": center,
+            "outline": outlines.get(number),
+        })
+
+    numbers = [r["number"] for r in reviry]
+    if len(numbers) != len(set(numbers)):
+        raise SystemExit("Chyba: v databáze sa opakuje číslo revíru, stránky neboli zmenené.")
+    # Slug from the name; two revíry with the same name (Turiec č. 2) also get the number
+    by_slug = {}
+    for r in reviry:
+        by_slug.setdefault(slugify(r["name"]), []).append(r)
+    for slug, same in by_slug.items():
+        for r in same:
+            r["slug"] = slug if len(same) == 1 else f"{slug}-{r['number']}"
+    reviry.sort(key=lambda r: (sort_key(r["name"]), r["number"]))
+    return reviry, warnings
 
 
 SPRITE = """  <svg class="sprite" aria-hidden="true" focusable="false">
@@ -213,12 +332,12 @@ def row(r, href):
             f'</a></li>')
 
 
-def cta_band(cta):
+def cta_band(cta, count):
     return f"""    <section class="section section-dark revir-cta" aria-labelledby="cta-title" data-sticky-hide>
       <div class="container revir-cta__inner">
         <div>
           <h2 id="cta-title" class="h2">Všetky revíry s&nbsp;hranicami v&nbsp;telefóne</h2>
-          <p>Viac než 330 kaprových a&nbsp;lipňových revírov, navigácia k&nbsp;vode, lovné miery a&nbsp;rybárske poriadky. Pre telefóny s&nbsp;Androidom.</p>
+          <p>Všetkých {count} kaprových a&nbsp;lipňových revírov, navigácia k&nbsp;vode, lovné miery a&nbsp;rybárske poriadky. Pre telefóny s&nbsp;Androidom.</p>
         </div>
         {buy_button(cta)}
       </div>
@@ -258,17 +377,31 @@ def map_figure(r):
         </figure>"""
 
 
-def detail_page(r, all_reviry, demo):
+def related_lists(r, reviry):
+    """Other stretches of the same river and the nearest other revíry, each shown in name order."""
+    others = [x for x in reviry if x is not r]
+    same = sorted((x for x in others if x["base"] == r["base"]), key=lambda x: distance_km(r, x))[:8]
+    same.sort(key=lambda x: sort_key(x["name"]))
+    near = sorted((x for x in others if x["base"] != r["base"]), key=lambda x: distance_km(r, x))[:6]
+    near.sort(key=lambda x: sort_key(x["name"]))
+    return same, near
+
+
+def detail_page(r, reviry):
     t = TYPES[r["type"]]
     name = nbsp(r["name"])
-    facts = [("Charakter", t["water"])]
-    for key, label in (("organization", "Organizácia"), ("season", "Obdobie lovu"), ("area", "Rozloha")):
-        if r.get(key):
-            facts.append((label, r[key]))
-    facts_html = "\n".join(
-        f'            <div><dt>{label}</dt><dd>{nbsp(value)}</dd></div>' for label, value in facts)
+    facts = [("Charakter", nbsp(t["water"]))]
+    if r["water"]:
+        facts.append(("Typ vody", nbsp(r["water"])))
+    if r["organizations"]:
+        facts.append(("Organizácia", "<br>".join(nbsp(o) for o in r["organizations"])))
+    if r["area"]:
+        facts.append(("Rozloha", esc(r["area"])))
+    facts_html = "\n".join(f'            <div><dt>{label}</dt><dd>{value}</dd></div>' for label, value in facts)
+    chip = t["label"] + (" · hraničný" if r["border"] else "")
 
-    if r.get("description"):
+    about = ""
+    if r["description"]:
         about = f"""    <section class="section-sm revir-about" aria-labelledby="about-title">
       <div class="container">
         <h2 id="about-title" class="h3">Popis revíru</h2>
@@ -276,20 +409,32 @@ def detail_page(r, all_reviry, demo):
         <p class="revir-about__note">Údaje sú informatívne. Záväzné je aktuálne znenie rybárskeho poriadku SRZ.</p>
       </div>
     </section>"""
-    elif demo:
-        about = """    <section class="section-sm revir-about" aria-label="Ukážka">
+
+    same, near = related_lists(r, reviry)
+    blocks = []
+    if same:
+        blocks.append(("Ďalšie úseky toku", same))
+    if near:
+        blocks.append(("Revíry v okolí", near))
+    related_html = []
+    for i, (heading, items) in enumerate(blocks):
+        rows = "\n".join("          " + row(x, f"{x['slug']}.html") for x in items)
+        title_id = ' id="related-title"' if i == 0 else ""
+        head = (f"""        <div class="revir-related__head">
+          <h2{title_id} class="h3">{heading}</h2>
+          <a class="text-link text-link--sm" href="../reviry.html">Celý zoznam revírov</a>
+        </div>""" if i == 0 else f'        <h2 class="h3 revir-related__sub">{heading}</h2>')
+        related_html.append(f"""{head}
+        <ul class="revir-rows revir-rows--cols">
+{rows}
+        </ul>""")
+    related = ""
+    if related_html:
+        related = f"""    <section class="section-sm revir-related" aria-labelledby="related-title">
       <div class="container">
-        <p class="demo-note">Ukážka: popis, organizácia a obdobie lovu tohto revíru sa doplnia z&nbsp;údajov aplikácie.</p>
+{chr(10).join(related_html)}
       </div>
     </section>"""
-    else:
-        about = ""
-
-    same = [x for x in all_reviry if x is not r and base_name(x["name"]) == base_name(r["name"])]
-    i = all_reviry.index(r)
-    around = [x for x in all_reviry[max(0, i - 3):i + 4] if x is not r and x not in same]
-    related = (same + around)[:6]
-    related_html = "\n".join("            " + row(x, f"{x['slug']}.html") for x in related)
 
     body = f"""    <section class="revir-hero" aria-labelledby="revir-title">
       <div class="container">
@@ -302,7 +447,7 @@ def detail_page(r, all_reviry, demo):
         </nav>
         <div class="revir-hero__grid">
           <div class="revir-hero__copy">
-            <p class="type-chip"><span class="type-dot type-dot--{t['code']}" aria-hidden="true"></span>{t['label']}</p>
+            <p class="type-chip"><span class="type-dot type-dot--{t['code']}" aria-hidden="true"></span>{chip}</p>
             <h1 id="revir-title" class="revir-title">{name}</h1>
             <p class="revir-plate"><span>Číslo revíru</span> <strong>{esc(r['number'])}</strong></p>
             <dl class="revir-facts">
@@ -333,23 +478,14 @@ def detail_page(r, all_reviry, demo):
       </div>
     </section>
 
-    <section class="section-sm revir-related" aria-labelledby="related-title">
-      <div class="container">
-        <div class="revir-related__head">
-          <h2 id="related-title" class="h3">Ďalšie revíry</h2>
-          <a class="text-link text-link--sm" href="../reviry.html">Celý zoznam revírov</a>
-        </div>
-        <ul class="revir-rows revir-rows--cols">
-{related_html}
-        </ul>
-      </div>
-    </section>
+{related}
 
-{cta_band('revir-' + r['slug'] + '-cta')}"""
+{cta_band('revir-' + r['slug'] + '-cta', len(reviry))}"""
 
-    org = f", {r['organization']}" if r.get("organization") else ""
-    description = (f"{r['name']}, číslo revíru {r['number']}. {t['adj'].capitalize()} zväzový revír SRZ{org}. "
-                   f"Popis, obdobie lovu a presné hranice revíru na mape v aplikácii Rybárske Revíry SK.")
+    water = f", {r['water'].lower()}" if r["water"] else ""
+    org = f", {r['organizations'][0]}" if r["organizations"] else ""
+    description = (f"{r['name']}, číslo revíru {r['number']}. {t['adj'].capitalize()} zväzový revír SRZ{water}{org}. "
+                   f"Popis revíru a presné hranice na mape v aplikácii Rybárske Revíry SK.")
     canonical = f"{SITE}revir/{r['slug']}.html"
     ld = {
         "@context": "https://schema.org",
@@ -358,7 +494,7 @@ def detail_page(r, all_reviry, demo):
                 "@type": "BodyOfWater",
                 "name": r["name"],
                 "identifier": {"@type": "PropertyValue", "propertyID": "Číslo revíru SRZ", "value": r["number"]},
-                "description": r.get("description") or f"{t['label']} SRZ číslo {r['number']}.",
+                "description": r["description"] or f"{t['label']} SRZ číslo {r['number']}.",
                 "url": canonical,
             },
             {
@@ -378,7 +514,7 @@ def detail_page(r, all_reviry, demo):
         current="revir")
 
 
-def list_page(reviry, demo):
+def list_page(reviry):
     counts = {"": len(reviry), "k": sum(r["type"] == "kaprovy" for r in reviry), "l": sum(r["type"] == "lipnovy" for r in reviry)}
     groups = {}
     for r in reviry:
@@ -394,14 +530,10 @@ def list_page(reviry, demo):
           </section>""")
     groups_html = "\n".join(blocks)
 
-    demo_html = (f"""        <p class="demo-note">Ukážka: v&nbsp;náhľade je {len(reviry)} revírov z&nbsp;aplikácie. Po napojení na údaje aplikácie tu bude všetkých viac než 330.</p>
-""" if demo else "")
-
     def shown(n):
-        if n == 1:
-            return "Zobrazený 1 revír"
-        return f"Zobrazené {n} revíry" if 2 <= n <= 4 else f"Zobrazených {n} revírov"
+        return f"{plural(n, 'Zobrazený', 'Zobrazené', 'Zobrazených')} {n} {plural(n, 'revír', 'revíry', 'revírov')}"
 
+    n = counts[""]
     body = f"""    <section class="list-hero" aria-labelledby="list-title">
       <div class="container">
         <nav class="crumbs" aria-label="Omrvinková navigácia">
@@ -411,8 +543,8 @@ def list_page(reviry, demo):
           </ol>
         </nav>
         <h1 id="list-title" class="h2">Zväzové revíry na Slovensku</h1>
-        <p class="list-hero__lead">Kaprové a&nbsp;lipňové revíry SRZ s&nbsp;číslom revíru. Hľadajte podľa názvu toku, nádrže alebo čísla revíru.</p>
-{demo_html}        <form class="revir-filter" role="search" action="reviry.html" method="get" data-revir-filter>
+        <p class="list-hero__lead">{plural(n, 'Jeden', 'Všetky', 'Všetkých')} {n} kaprových a&nbsp;lipňových revírov SRZ s&nbsp;číslom revíru. Hľadajte podľa názvu toku, nádrže alebo čísla revíru.</p>
+        <form class="revir-filter" role="search" action="reviry.html" method="get" data-revir-filter>
           <div class="search-field">
             <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
             <label for="q" class="visually-hidden">Hľadať revír</label>
@@ -425,7 +557,7 @@ def list_page(reviry, demo):
             <label class="chip"><input type="radio" name="t" value="l"> <span class="type-dot type-dot--l" aria-hidden="true"></span>Lipňové <span>{counts['l']}</span></label>
           </fieldset>
         </form>
-        <p class="result-count" data-count aria-live="polite">{shown(counts[''])}</p>
+        <p class="result-count" data-count aria-live="polite">{shown(n)}</p>
       </div>
     </section>
 
@@ -441,13 +573,13 @@ def list_page(reviry, demo):
       </div>
     </section>
 
-{cta_band('reviry-cta')}"""
+{cta_band('reviry-cta', n)}"""
 
     ld = {
         "@context": "https://schema.org",
         "@type": "ItemList",
         "name": "Zväzové revíry na Slovensku",
-        "numberOfItems": len(reviry),
+        "numberOfItems": n,
         "itemListElement": [
             {"@type": "ListItem", "position": i + 1, "name": r["name"], "url": f"{SITE}revir/{r['slug']}.html"}
             for i, r in enumerate(reviry)
@@ -456,42 +588,60 @@ def list_page(reviry, demo):
     return page(
         title="Zoznam rybárskych revírov SRZ – kaprové a lipňové revíry | Rybárske Revíry SK",
         og_title="Zväzové revíry na Slovensku",
-        description="Zoznam kaprových a lipňových zväzových revírov SRZ s číslami revírov. Vyhľadajte revír podľa názvu alebo čísla a pozrite si jeho popis a hranice v aplikácii.",
+        description=f"Zoznam {n} kaprových a lipňových zväzových revírov SRZ s číslami revírov. Vyhľadajte revír podľa názvu alebo čísla a pozrite si jeho popis a hranice v aplikácii.",
         canonical=f"{SITE}reviry.html", asset="", home="./", body=body, ld=ld, current="reviry",
         scripts=("assets/js/reviry-data.js", "assets/js/reviry.js"))
 
 
 def main():
-    doc = json.loads((ROOT / "data" / "reviry.json").read_text(encoding="utf-8"))
-    demo = bool(doc.get("demo"))
-    reviry = doc["reviry"]
-    for r in reviry:
-        r.setdefault("slug", slugify(r["name"]))
-        if "type" not in r:
-            r["type"] = "lipnovy" if r["number"].split("-")[2] == "5" else "kaprovy"
-    reviry.sort(key=lambda r: sort_key(r["name"]))
-    slugs = [r["slug"] for r in reviry]
-    assert len(slugs) == len(set(slugs)), "duplicate slug"
+    parser = argparse.ArgumentParser(description="Vytvorí stránky revírov zo súkromnej databázy reviry.xml.")
+    parser.add_argument("--xml", type=Path, default=Path(os.environ.get("REVIRY_XML", DEFAULT_XML)),
+                        help=f"cesta k databáze (predvolená: {DEFAULT_XML.relative_to(ROOT.parent)} vedľa projektu)")
+    xml_path = parser.parse_args().xml.expanduser()
+    if not xml_path.is_file():
+        print(f"Databáza {xml_path} sa nenašla, stránky revírov ostali bez zmeny.", file=sys.stderr)
+        sys.exit(2)
+    try:
+        reviry, warnings = load_reviry(xml_path)
+    except ET.ParseError as e:
+        print(f"Databáza {xml_path} nie je platné XML ({e}), stránky revírov ostali bez zmeny.", file=sys.stderr)
+        sys.exit(1)
+    if not reviry:
+        print("V databáze nie je žiadny revír, stránky revírov ostali bez zmeny.", file=sys.stderr)
+        sys.exit(1)
+    for w in sorted(set(warnings)):
+        print("Upozornenie:", w, file=sys.stderr)
+
+    # Everything is built in memory first, so a broken database never leaves the site half updated
+    files = {f"revir/{r['slug']}.html": detail_page(r, reviry) for r in reviry}
+    files["reviry.html"] = list_page(reviry)
+    index = [{"n": r["name"], "c": r["number"], "t": TYPES[r["type"]]["code"], "s": r["slug"], "k": search_key(r)} for r in reviry]
+    files["assets/js/reviry-data.js"] = ("// Generated by tools/build_reviry.py: names and numbers for the revír search\nwindow.RR_REVIRY = "
+                                         + json.dumps(index, ensure_ascii=False, separators=(",", ":")) + ";\n")
+    urls = [SITE, SITE + "reviry.html", SITE + "privacy_policy.html"] + [f"{SITE}revir/{r['slug']}.html" for r in reviry]
+    files["sitemap.xml"] = ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+                            + "".join(f"  <url><loc>{u}</loc></url>\n" for u in urls) + "</urlset>\n")
+    files["robots.txt"] = f"User-agent: *\nAllow: /\n\nSitemap: {SITE}sitemap.xml\n"
+
+    # Coordinates must never reach the website
+    coords = {f"{c:.4f}".rstrip("0") for r in reviry if r["center"] for c in r["center"]}
+    leak = re.compile("|".join(re.escape(c) for c in coords if len(c) > 5)) if coords else None
+    if leak and any(leak.search(content) for content in files.values()):
+        raise SystemExit("Chyba: do stránok by sa dostali súradnice revírov, nič sa nezapísalo.")
 
     out_dir = ROOT / "revir"
     out_dir.mkdir(exist_ok=True)
+    keep = {Path(p).name for p in files if p.startswith("revir/")}
     for old in out_dir.glob("*.html"):
-        old.unlink()
-    for r in reviry:
-        (out_dir / f"{r['slug']}.html").write_text(detail_page(r, reviry, demo), encoding="utf-8")
-    (ROOT / "reviry.html").write_text(list_page(reviry, demo), encoding="utf-8")
-
-    index = [{"n": r["name"], "c": r["number"], "t": TYPES[r["type"]]["code"], "s": r["slug"], "k": search_key(r)} for r in reviry]
-    (ROOT / "assets" / "js" / "reviry-data.js").write_text(
-        "// Generated by tools/build_reviry.py from data/reviry.json\nwindow.RR_REVIRY = "
-        + json.dumps(index, ensure_ascii=False, separators=(",", ":")) + ";\n", encoding="utf-8")
-
-    urls = [SITE, SITE + "reviry.html", SITE + "privacy_policy.html"] + [f"{SITE}revir/{s}.html" for s in slugs]
-    (ROOT / "sitemap.xml").write_text(
-        '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        + "".join(f"  <url><loc>{u}</loc></url>\n" for u in urls) + "</urlset>\n", encoding="utf-8")
-    (ROOT / "robots.txt").write_text(f"User-agent: *\nAllow: /\n\nSitemap: {SITE}sitemap.xml\n", encoding="utf-8")
-    print(f"{len(reviry)} revírov: reviry.html, revir/*.html, assets/js/reviry-data.js, sitemap.xml, robots.txt")
+        if old.name not in keep:
+            old.unlink()
+    for path, content in files.items():
+        target = ROOT / path
+        if not target.is_file() or target.read_text(encoding="utf-8") != content:
+            target.write_text(content, encoding="utf-8")
+    kapr = sum(r["type"] == "kaprovy" for r in reviry)
+    print(f"{len(reviry)} revírov ({kapr} kaprových, {len(reviry) - kapr} lipňových): "
+          "reviry.html, revir/*.html, assets/js/reviry-data.js, sitemap.xml, robots.txt")
 
 
 if __name__ == "__main__":

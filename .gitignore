@@ -1,3 +1,7 @@
 .DS_Store
 __pycache__/
 .claude/
+
+# Databáza revírov je súkromná: nikdy ju nenahrávať na GitHub ani na web
+/reviry.xml
+/data/private/
