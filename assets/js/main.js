@@ -144,7 +144,7 @@
 
   // Boundary map, looping like the hero while the map is on screen: the pins of "začiatok a koniec",
   // then the exact boundary draws and fills in, holds, winds back to the pins and starts over.
-  // The pause button stops the loop, and so does choosing a view yourself
+  // Choosing a view shows it a little longer and the loop goes on from there; only the pause button stops it
   const map = document.querySelector('[data-map]');
   if (map) {
     const buttons = document.querySelectorAll('[data-map-mode]');
@@ -156,6 +156,7 @@
     };
     const STAY = { pins: 3000, polygon: 6200 }; // how long each view stays before the next one
     const FIRST = 1200; // the first switch, once the map comes into view
+    const PICKED = 4000; // extra time on a view someone chose
     let timer = null;
     let inView = !hasIO;
     let paused = reduceMotion;
@@ -189,8 +190,11 @@
     };
 
     buttons.forEach((b) => b.addEventListener('click', () => {
-      setPaused(true);
       setMode(b.dataset.mapMode, true);
+      clear();
+      if (paused || !inView || document.hidden) return;
+      played = true;
+      timer = window.setTimeout(next, STAY[b.dataset.mapMode] + PICKED);
     }));
 
     if (!reduceMotion) {
