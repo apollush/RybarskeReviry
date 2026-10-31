@@ -1939,9 +1939,28 @@ html:not(.js) .tour-panel[hidden] { display: grid; }
 .loc-hydro { fill: #9CCFDA; font-size: 22px; font-style: italic; font-weight: 500; letter-spacing: .08em; }
 .loc-town circle { fill: var(--on-dark-2); }
 .loc-town text { fill: var(--on-dark-2); font-size: 23px; font-weight: 600; }
+/* Nearby towns and villages: drawn at 0.3 size from the start and only visible once the map is zoomed in */
+.loc-places { opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+.loc-map.is-zoomed .loc-places { opacity: 1; transition: opacity .5s ease .45s; }
+.loc-place { scale: .3; }
+.loc-place circle { fill: var(--on-dark-2); }
+.loc-place text {
+  fill: var(--on-dark-2);
+  font-size: 23px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--map-land);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+.loc-place--1 text { fill: var(--on-dark); font-weight: 700; }
+.loc-place--3 circle { fill: rgba(169, 194, 190, .7); }
+.loc-place--3 text { font-size: 19px; font-weight: 500; font-style: italic; fill: rgba(169, 194, 190, .85); }
 .loc-town, .loc-hydro { transition: scale .7s var(--ease-out); }
 .loc-map.is-zoomed .loc-town,
 .loc-map.is-zoomed .loc-hydro { scale: .3; }
+.loc-town { transition: scale .7s var(--ease-out), opacity .3s ease; }
+.loc-map.is-zoomed .loc-town--far { opacity: 0; }
 
 .loc-pin { outline: none; }
 .js .loc-pin { cursor: pointer; }
@@ -1979,8 +1998,9 @@ html:not(.js) .tour-panel[hidden] { display: grid; }
   position: absolute;
   z-index: 1;
   right: 14px;
-  bottom: 14px;
 }
+.loc-hint { bottom: 14px; }
+.loc-zoom { top: 14px; }
 .loc-hint {
   margin: 0;
   padding: 7px 14px;
@@ -2015,6 +2035,8 @@ html:not(.js) .loc-hint { display: none; }
   .loc-map { --pin-k: 1.5; }
   .loc-town--minor { display: none; }
   .loc-town text { font-size: 32px; }
+  .loc-place text { font-size: 30px; }
+  .loc-place--3 text { font-size: 26px; }
   .loc-hydro { font-size: 30px; }
 }
 

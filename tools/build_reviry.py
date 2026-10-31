@@ -381,6 +381,58 @@ def slovakia():
     return (f"M{line(data['hranica'])}Z", f"M{line(data['dunaj'])}", (lx, ly), towns, grid)
 
 
+@functools.lru_cache(maxsize=None)
+def places():
+    """Towns and villages as (name, x, y, rank) in map units, biggest first (data/sidla.json)."""
+    return tuple(sorted(((n, *project(lon, lat), rank) for n, lon, lat, rank in load_json("sidla.json")["sidla"]),
+                        key=lambda p: p[3]))
+
+
+# What the zoomed-in map shows (all in map units, as the labels look once the page scales them by 0.3)
+ZOOM, VIEW_W, VIEW_H = 4, 250.0, 132.5
+FONT = {1: 9.0, 2: 9.0, 3: 8.0}  # label height; the widest case (phones) so that nothing overlaps there either
+
+
+def label_box(x, y, name, size):
+    """Where a dot and its name sit, as a box (x0, y0, x1, y1); the name starts to the right of the dot."""
+    return (x - 2, y - size * 0.8, x + 3.5 + 0.56 * size * len(name), y + size * 0.3)
+
+
+def zoomed_obstacles(px, py, danube_label):
+    """Fixed things in the zoomed-in view: the pin and its glow, the "Celé Slovensko" button (top right)
+    and the Danube label."""
+    vx0, vy0 = px - VIEW_W / 2, py - VIEW_H / 2 - 6
+    return [(px - 10, py - 20, px + 10, py + 10),
+            (vx0 + VIEW_W - 115, vy0, vx0 + VIEW_W, vy0 + 42),
+            (danube_label[0] - 12, danube_label[1] - 7, danube_label[0] + 12, danube_label[1] + 4)]
+
+
+def fits_zoomed(box, px, py, taken):
+    """True when the label lies fully inside the zoomed-in view and overlaps nothing in `taken`."""
+    vx0, vy0 = px - VIEW_W / 2, py - VIEW_H / 2 - 6
+    if not (box[0] >= vx0 + 3 and box[2] <= vx0 + VIEW_W - 3 and box[1] >= vy0 + 3 and box[3] <= vy0 + VIEW_H - 3):
+        return False
+    return not any(box[0] < t[2] and t[0] < box[2] and box[1] < t[3] and t[1] < box[3] for t in taken)
+
+
+def nearby_places(px, py, regional, danube_label):
+    """Towns and villages for the zoomed-in view around (px, py): biggest first, nearest first within a size,
+    never overlapping each other, the pin, the Danube label, the regional towns or the button."""
+    taken = zoomed_obstacles(px, py, danube_label) + [label_box(x, y, name, FONT[1]) for name, x, y in regional]
+    names = {name for name, *_ in regional}
+    shown = []
+    for name, x, y, rank in sorted(places(), key=lambda p: (p[3], (p[1] - px) ** 2 + (p[2] - py) ** 2)):
+        if name in names or abs(x - px) > VIEW_W or abs(y - py) > VIEW_H:
+            continue
+        box = label_box(x, y, name, FONT[rank])
+        if fits_zoomed(box, px, py, taken):
+            taken.append(box)
+            shown.append((name, x, y, rank))
+            if len(shown) >= 14:
+                break
+    return shown
+
+
 def map_figure(r):
     name = nbsp(r["name"])
     border, danube, (lx, ly), towns, grid = slovakia()
@@ -404,13 +456,27 @@ def map_figure(r):
             <a class="revir-loc__link" href="{esc(maps_url(r))}" target="_blank" rel="noopener">Otvoriť v&nbsp;Mapách Google<svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
           </div>"""
     town_marks = []
+    towns_kept = []
     for town, tx, ty, minor in towns:
         # A town whose dot or name would sit under the pin is left out
         if r["center"] and tx - 8 < px + 24 and px - 24 < tx + 14 + 13 * len(town) and ty - 20 < py + 22 and py - 58 < ty + 14:
             continue
         cls = "loc-town loc-town--minor" if minor else "loc-town"
+        if r["center"]:
+            # A regional town whose name would be cut off by the edge of the zoomed-in view is hidden there
+            if fits_zoomed(label_box(tx, ty, town, FONT[1]), px, py, zoomed_obstacles(px, py, (lx, ly))):
+                towns_kept.append((town, tx, ty))
+            else:
+                cls += " loc-town--far"
         town_marks.append(f'<g class="{cls}" style="transform-origin:{tx:.1f}px {ty:.1f}px"><circle cx="{tx:.1f}" cy="{ty:.1f}" r="5"/>'
                           f'<text x="{tx + 11:.1f}" y="{ty + 8:.1f}">{esc(town)}</text></g>')
+    place_marks = ""
+    if r["center"]:
+        marks = "".join(f'<g class="loc-place loc-place--{rank}" style="transform-origin:{x:.1f}px {y:.1f}px">'
+                        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{5 if rank < 3 else 4}"/>'
+                        f'<text x="{x + 11:.1f}" y="{y + 8:.1f}">{esc(name)}</text></g>'
+                        for name, x, y, rank in nearby_places(px, py, towns_kept, (lx, ly)))
+        place_marks = f'\n            <g class="loc-places" aria-hidden="true">{marks}</g>'
     label = f"Poloha revíru {esc(r['name'])} na mape Slovenska" if r["center"] else "Mapa Slovenska"
     return f"""        <figure class="revir-map">
           <div class="loc-stage">
@@ -419,7 +485,7 @@ def map_figure(r):
             <path class="loc-land" d="{border}"/>
             <path class="loc-danube" d="{danube}"/>
             <text class="loc-hydro" x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" style="transform-origin:{lx:.1f}px {ly:.1f}px">Dunaj</text>
-            <g class="loc-towns">{''.join(town_marks)}</g>{pin}
+            <g class="loc-towns">{''.join(town_marks)}</g>{place_marks}{pin}
           </svg>{controls}
           </div>
           <figcaption>{place}

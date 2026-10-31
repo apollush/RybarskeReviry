@@ -13,6 +13,7 @@ Web Android aplikácie **Rybárske Revíry SK**. Je to statická stránka v čis
 | `assets/` | Štýly, skripty, ikony a snímky obrazovky aplikácie |
 | `data/organizacie.json` | Ako sa na webe volajú organizácie, ktoré revíry obhospodarujú |
 | `data/slovensko.json` | Mapa Slovenska na stránke revíru: hranica štátu, Dunaj a krajské mestá |
+| `data/sidla.json` | Mestá a obce, ktoré sa ukážu na priblíženej mape revíru (ručne zadané, približné súradnice) |
 | `tools/build_reviry.py` | Generátor stránok revírov |
 | `tools/aktualizuj-reviry.command` | Prebuduje stránky revírov a nahrá ich na GitHub |
 | `sitemap.xml`, `robots.txt` | Pre vyhľadávače (generované) |
