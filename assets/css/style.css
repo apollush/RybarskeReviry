@@ -1902,26 +1902,70 @@ html:not(.js) .tour-panel[hidden] { display: grid; }
   border-top: 1px solid var(--line-dark);
 }
 
-/* Where the revír is: one point on the map of Slovakia (its boundaries stay in the app) */
-.loc-map { display: block; font-family: var(--font); }
+/* Where the revír is: one point on the map of Slovakia (its boundaries stay in the app).
+   The point is a button: it glows, and a click zooms the map in on it. --zoom-k keeps line widths,
+   labels and the pin at their normal size on screen while the viewBox is 4x closer */
+.loc-stage { position: relative; }
+.loc-map {
+  --pin-k: 1;
+  --zoom-k: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font);
+}
+.loc-map.is-zoomed { --zoom-k: .3; }
+.loc-grid {
+  fill: none;
+  stroke: rgba(234, 242, 239, .08);
+  stroke-width: calc(1px * var(--zoom-k));
+  transition: stroke-width .7s var(--ease-out);
+}
 .loc-land {
   fill: rgba(234, 242, 239, .07);
   stroke: rgba(234, 242, 239, .4);
-  stroke-width: 2;
+  stroke-width: calc(2px * var(--zoom-k));
   stroke-linejoin: round;
+  transition: stroke-width .7s var(--ease-out);
 }
-.loc-danube { fill: none; stroke: var(--map-water); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+.loc-danube {
+  fill: none;
+  stroke: var(--map-water);
+  stroke-width: calc(6px * var(--zoom-k));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke-width .7s var(--ease-out);
+}
 .loc-hydro { fill: #9CCFDA; font-size: 22px; font-style: italic; font-weight: 500; letter-spacing: .08em; }
 .loc-town circle { fill: var(--on-dark-2); }
 .loc-town text { fill: var(--on-dark-2); font-size: 23px; font-weight: 600; }
+.loc-town, .loc-hydro { transition: scale .7s var(--ease-out); }
+.loc-map.is-zoomed .loc-town,
+.loc-map.is-zoomed .loc-hydro { scale: .3; }
+
+.loc-pin { outline: none; }
+.js .loc-pin { cursor: pointer; }
+.loc-pin__drop,
+.loc-pin__halo,
+.loc-pin__pulse,
+.loc-pin__hit {
+  scale: calc(var(--pin-k) * var(--zoom-k));
+  transition: scale .7s var(--ease-out), fill .2s ease, stroke .2s ease;
+}
+.loc-pin__drop { transform-box: fill-box; transform-origin: 50% 100%; filter: drop-shadow(0 0 5px rgba(143, 166, 255, .9)); }
+.loc-pin__halo,
+.loc-pin__pulse,
+.loc-pin__hit { transform-box: fill-box; transform-origin: center; }
 .loc-pin__drop path { fill: #fff; }
 .loc-pin__drop circle { fill: var(--map-land); }
+.loc-pin__hit { fill: transparent; }
+.loc-pin__halo { fill: rgba(143, 166, 255, .24); stroke: rgba(143, 166, 255, .75); stroke-width: 1.5; }
 .loc-pin__pulse {
-  fill: rgba(143, 166, 255, .45);
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: gps-pulse 2.4s ease-out .5s 3 backwards;
+  fill: rgba(143, 166, 255, .5);
+  animation: gps-pulse 2.2s ease-out infinite;
 }
+.js .loc-pin:hover .loc-pin__halo { fill: rgba(143, 166, 255, .42); stroke: #fff; }
+.loc-pin:focus-visible .loc-pin__halo { fill: rgba(143, 166, 255, .42); stroke: #fff; stroke-width: 3; }
 @media (prefers-reduced-motion: no-preference) {
   .loc-pin__drop { animation: pin-drop .55s cubic-bezier(.34, 1.4, .64, 1) both; }
 }
@@ -1929,10 +1973,46 @@ html:not(.js) .tour-panel[hidden] { display: grid; }
   from { opacity: 0; transform: translateY(-36px); }
   to { opacity: 1; transform: none; }
 }
-.loc-pin__drop { transform-box: fill-box; transform-origin: 50% 100%; }
+
+.loc-hint,
+.loc-zoom {
+  position: absolute;
+  z-index: 1;
+  right: 14px;
+  bottom: 14px;
+}
+.loc-hint {
+  margin: 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(7, 40, 48, .78);
+  color: var(--on-dark);
+  font-size: .8125rem;
+  line-height: 1.3;
+  pointer-events: none;
+}
+.loc-zoom {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--on-dark);
+  color: var(--ink);
+  font: inherit;
+  font-size: .9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.loc-zoom:hover { background: #fff; }
+.loc-hint[hidden],
+.loc-zoom[hidden] { display: none; }
+html:not(.js) .loc-hint { display: none; }
+
 @media (max-width: 559px) {
-  .loc-pin__drop,
-  .loc-pin__pulse { scale: 1.5; }
+  .loc-map { --pin-k: 1.5; }
   .loc-town--minor { display: none; }
   .loc-town text { font-size: 32px; }
   .loc-hydro { font-size: 30px; }

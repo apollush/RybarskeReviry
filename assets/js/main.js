@@ -212,6 +212,60 @@
     }
   }
 
+  // Revír page: the point on the map of Slovakia is a button. A click zooms the map in on it (the
+  // viewBox glides 4x closer, the point ends up in the middle), a second click or "Celé Slovensko" zooms out
+  const locMap = document.querySelector('.loc-map');
+  const locPin = locMap && locMap.querySelector('.loc-pin');
+  if (locPin) {
+    const stage = locMap.closest('.loc-stage');
+    const hint = stage.querySelector('.loc-hint');
+    const back = stage.querySelector('.loc-zoom');
+    const label = locPin.getAttribute('aria-label');
+    const home = locMap.getAttribute('viewBox').split(' ').map(Number);
+    const ZOOM = 4;
+    const MS = 700;
+    const px = Number(locPin.dataset.x);
+    const py = Number(locPin.dataset.y);
+    const w = home[2] / ZOOM;
+    const h = home[3] / ZOOM;
+    const close = [px - w / 2, py - h / 2 - 6, w, h]; // a little above the tip, where the pin's head is
+    let view = home.slice();
+    let frame = 0;
+    let zoomed = false;
+
+    const draw = () => locMap.setAttribute('viewBox', view.map((n) => n.toFixed(2)).join(' '));
+    const glide = (to) => {
+      window.cancelAnimationFrame(frame);
+      if (reduceMotion) { view = to.slice(); draw(); return; }
+      const from = view.slice();
+      const t0 = performance.now();
+      const step = (now) => {
+        const k = Math.min(1, (now - t0) / MS);
+        const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+        view = from.map((f, i) => f + (to[i] - f) * e);
+        draw();
+        if (k < 1) frame = window.requestAnimationFrame(step);
+      };
+      frame = window.requestAnimationFrame(step);
+    };
+    const setZoom = (on) => {
+      zoomed = on;
+      locMap.classList.toggle('is-zoomed', on);
+      locPin.setAttribute('aria-pressed', String(on));
+      locPin.setAttribute('aria-label', on ? 'Oddialiť mapu na celé Slovensko' : label);
+      if (hint) hint.hidden = on;
+      if (back) back.hidden = !on;
+      glide(on ? close : home);
+    };
+
+    locPin.addEventListener('click', () => setZoom(!zoomed));
+    locPin.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setZoom(!zoomed); }
+    });
+    if (back) back.addEventListener('click', () => { setZoom(false); locPin.focus(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && zoomed) setZoom(false); });
+  }
+
   // Screens tour tabs
   const tablist = document.querySelector('[role="tablist"]');
   if (tablist) {

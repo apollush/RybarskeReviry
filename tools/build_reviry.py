@@ -367,25 +367,37 @@ def maps_url(r):
 
 @functools.lru_cache(maxsize=None)
 def slovakia():
-    """The parts of the map that are the same on every page: border, Danube, regional towns."""
+    """The parts of the map that are the same on every page: border, Danube, regional towns, grid."""
     data = load_json("slovensko.json")
-    line = lambda pts: " ".join(f"{x:.1f} {y:.1f}" for x, y in (project(*p) for p in pts))
+    pt = lambda lon, lat: "%.1f %.1f" % project(lon, lat)
+    line = lambda pts: " ".join(pt(*p) for p in pts)
     lx, ly = project(*data["dunaj_popis"])
     towns = [(t["nazov"], *project(*t["poloha"]), t.get("minor", False)) for t in data["mesta"]]
-    return (f"M{line(data['hranica'])}Z", f"M{line(data['dunaj'])}", (lx, ly), towns)
+    # A faint grid every half degree: when the map is zoomed in it shows how far it moved
+    lons = [16.0 + 0.5 * i for i in range(14)]
+    lats = [47.0 + 0.5 * i for i in range(6)]
+    grid = "".join(f"M{pt(lon, lats[0])}L{pt(lon, lats[-1])}" for lon in lons)
+    grid += "".join(f"M{pt(lons[0], lat)}L{pt(lons[-1], lat)}" for lat in lats)
+    return (f"M{line(data['hranica'])}Z", f"M{line(data['dunaj'])}", (lx, ly), towns, grid)
 
 
 def map_figure(r):
     name = nbsp(r["name"])
-    border, danube, (lx, ly), towns = slovakia()
-    pin, place = "", ""
+    border, danube, (lx, ly), towns, grid = slovakia()
+    pin, place, controls = "", "", ""
     if r["center"]:
         px, py = project(r["center"][1], r["center"][0])
+        # The point is a button: it glows, and a click zooms the map in on it (assets/js/main.js)
         pin = f"""
-            <g class="loc-pin" transform="translate({px:.1f} {py:.1f})">
+            <g class="loc-pin" data-x="{px:.1f}" data-y="{py:.1f}" transform="translate({px:.1f} {py:.1f})" role="button" tabindex="0" aria-pressed="false" aria-label="Priblížiť mapu na revír {esc(r['name'])}">
+              <circle class="loc-pin__hit" cy="-18" r="34"/>
+              <circle class="loc-pin__halo" r="26"/>
               <circle class="loc-pin__pulse" r="18"/>
               <g class="loc-pin__drop"><path d="M0 0C-5-13-18-21-18-35a18 18 0 1 1 36 0C18-21 5-13 0 0Z"/><circle cy="-35" r="6.5"/></g>
             </g>"""
+        controls = """
+          <p class="loc-hint">Kliknutím na bod mapu priblížite</p>
+          <button type="button" class="loc-zoom" hidden>Celé Slovensko</button>"""
         place = f"""
           <div class="revir-loc">
             <p class="revir-loc__gps"><span>GPS</span> <span class="revir-loc__value" translate="no">{gps(r)}</span></p>
@@ -397,16 +409,19 @@ def map_figure(r):
         if r["center"] and tx - 8 < px + 24 and px - 24 < tx + 14 + 13 * len(town) and ty - 20 < py + 22 and py - 58 < ty + 14:
             continue
         cls = "loc-town loc-town--minor" if minor else "loc-town"
-        town_marks.append(f'<g class="{cls}"><circle cx="{tx:.1f}" cy="{ty:.1f}" r="5"/>'
+        town_marks.append(f'<g class="{cls}" style="transform-origin:{tx:.1f}px {ty:.1f}px"><circle cx="{tx:.1f}" cy="{ty:.1f}" r="5"/>'
                           f'<text x="{tx + 11:.1f}" y="{ty + 8:.1f}">{esc(town)}</text></g>')
     label = f"Poloha revíru {esc(r['name'])} na mape Slovenska" if r["center"] else "Mapa Slovenska"
     return f"""        <figure class="revir-map">
-          <svg class="loc-map" viewBox="{MAP_VIEWBOX}" role="img" aria-label="{label}">
+          <div class="loc-stage">
+          <svg class="loc-map" viewBox="{MAP_VIEWBOX}" role="group" aria-label="{label}">
+            <path class="loc-grid" d="{grid}"/>
             <path class="loc-land" d="{border}"/>
             <path class="loc-danube" d="{danube}"/>
-            <text class="loc-hydro" x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle">Dunaj</text>
+            <text class="loc-hydro" x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" style="transform-origin:{lx:.1f}px {ly:.1f}px">Dunaj</text>
             <g class="loc-towns">{''.join(town_marks)}</g>{pin}
-          </svg>
+          </svg>{controls}
+          </div>
           <figcaption>{place}
           <p class="revir-map__note">
             <span class="revir-map__lock"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg></span>
