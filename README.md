@@ -34,6 +34,10 @@ python3 tools/build_reviry.py
 
 Iné umiestnenie databázy: `python3 tools/build_reviry.py --xml /cesta/k/reviry.xml`. Generované súbory needitujte ručne.
 
+## Zverejnený web
+
+Web beží zadarmo na GitHub Pages: https://apollush.github.io/RybarskeReviry/. GitHub ho zverejní znova pri každom nahraní do vetvy `main`, zvyčajne do dvoch minút. Prázdny súbor `.nojekyll` zabezpečí, že GitHub súbory zverejní bez úprav. Doména rybarskereviry.sk na tento web zatiaľ nesmeruje.
+
 ## Lokálny náhľad
 
 ```bash
