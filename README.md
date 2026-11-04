@@ -8,9 +8,11 @@ Web Android aplikácie **Rybárske Revíry SK**. Je to statická stránka v čis
 |---|---|
 | `index.html` | Úvodná stránka |
 | `reviry.html` | Zoznam revírov s vyhľadávaním (generovaný) |
-| `revir/*.html` | Stránka každého revíru (generované) |
+| `revir/*.html` | Stránka každého revíru (generované). Stará adresa premenovaného revíru presmeruje na novú, pri zrušenom revíri povie, že už v zozname nie je. |
+| `404.html` | Stránka pre neexistujúcu adresu (generovaná). Na Websupporte ju zapne `.htaccess`, GitHub Pages ju použije sám. |
 | `privacy_policy.html` | Ochrana súkromia. Adresu nemeňte, odkazuje na ňu Google Play. |
-| `assets/` | Štýly, skripty, ikony a snímky obrazovky aplikácie |
+| `assets/` | Štýly, skripty, ikony a snímky obrazovky aplikácie. `assets/img/og-image.jpg` je obrázok pri zdieľaní odkazu, vzniká z `tools/og-image.html`. |
+| `data/adresy-revirov.json` | Všetky adresy, ktoré revír kedy mal (číslo revíru → adresy). Dopĺňa ho generátor, nič z neho nemažte. |
 | `data/organizacie.json` | Ako sa na webe volajú organizácie, ktoré revíry obhospodarujú |
 | `data/slovensko.json` | Mapa Slovenska na stránke revíru: hranica štátu, Dunaj a krajské mestá |
 | `data/sidla.json` | Mestá a obce, ktoré sa ukážu na priblíženej mape revíru (ručne zadané, približné súradnice) |

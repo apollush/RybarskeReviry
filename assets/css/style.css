@@ -1815,6 +1815,20 @@ html:not(.js) .tour-panel[hidden] { display: grid; }
 .empty-state p + p { margin-top: 8px; }
 .empty-state strong { color: var(--ink); }
 
+/* 404 and an old revír address: a short note and the ways on */
+.page-note { padding-bottom: clamp(72px, 12vw, 160px); }
+.page-note__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.page-note__actions .btn-plain {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 22px;
+  text-decoration: none;
+}
+.page-note__actions .btn-plain:first-child { background: var(--ink); color: var(--on-dark); }
+.page-note__actions .btn-plain:first-child:hover { background: var(--ink-900); }
+
 @media (min-width: 640px) {
   .letter-groups { columns: 2; }
 }

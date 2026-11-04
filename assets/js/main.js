@@ -363,11 +363,45 @@
     if (first) first.focus();
   }));
 
-  // Track which buy button sends people to Google Play
+  // iPhone and iPad (iPadOS reports itself as a Mac with a touch screen): the app is only in Google Play
+  // so far, so every buy button asks for an e-mail instead. Android, computers and no JavaScript keep Google Play
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  if (isIOS) {
+    const mail = 'mailto:info@rybarskereviry.sk?subject=Chcem%20aplik%C3%A1ciu%20na%20iPhone';
+    const small = [];
+    document.querySelectorAll('.btn-buy').forEach((btn) => {
+      btn.href = mail;
+      const label = btn.querySelector('.btn-buy__label');
+      const meta = btn.querySelector('.btn-buy__meta');
+      if (label) label.textContent = 'Na iPhone čoskoro';
+      if (meta) meta.textContent = 'Dajte mi vedieť e-mailom';
+      if (!label) small.push(btn);
+    });
+    const stickyNote = document.querySelector('.sticky-buy__text span');
+    if (stickyNote) stickyNote.textContent = 'Dajte mi vedieť e-mailom';
+    // The small buttons (header, sticky bar) say "Čoskoro" when the longer text would run into the text
+    // beside them or squeeze it onto more than two lines (a Range measures the text where it overflows too)
+    const fit = () => small.forEach((btn) => {
+      const name = btn.parentElement.querySelector('.brand__name, .sticky-buy__text');
+      btn.textContent = 'Na iPhone čoskoro';
+      if (!name || !btn.offsetWidth) return;
+      const range = document.createRange();
+      range.selectNodeContents(name);
+      const tops = Array.from(range.getClientRects(), (r) => r.top).sort((a, b) => a - b);
+      const lines = tops.filter((top, i) => i === 0 || top > tops[i - 1] + 8).length;
+      if (range.getBoundingClientRect().right > btn.getBoundingClientRect().left - 8 || lines > 2) btn.textContent = 'Čoskoro';
+    });
+    fit();
+    window.addEventListener('resize', fit);
+    if (document.fonts) document.fonts.ready.then(fit);
+  }
+
+  // Track which buy button sends people to Google Play (on an iPhone: to the e-mail)
   document.addEventListener('click', (e) => {
     const cta = e.target.closest('[data-cta]');
     if (cta && gaLoaded) {
-      window.gtag('event', 'play_store_click', { cta_position: cta.dataset.cta, transport_type: 'beacon' });
+      window.gtag('event', isIOS ? 'iphone_email_click' : 'play_store_click', { cta_position: cta.dataset.cta, transport_type: 'beacon' });
     }
   });
 

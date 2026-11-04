@@ -11,11 +11,15 @@ index and the sitemap carry no coordinates, so the database can't be pulled from
 
 Outputs
   reviry.html               list of all revíry with search and filters
-  revir/<slug>.html         one page per revír (what people land on from Google)
+  revir/<slug>.html         one page per revír (what people land on from Google); an address a revír no
+                            longer uses keeps a page that sends visitors to its new name or says it's gone
+  404.html                  shown for an address that doesn't exist
   assets/js/reviry-data.js  small search index (name, number, character, slug)
+  data/adresy-revirov.json  every address each revír ever had (revír number -> slugs)
   sitemap.xml, robots.txt
 Every CSS and JS link, also in index.html and privacy_policy.html, gets ?v=<content hash>, so after a
-change browsers load the new file instead of an old cached copy.
+change browsers load the new file instead of an old cached copy. The number of revíry in index.html
+follows the database too.
 Public lookup files: data/organizacie.json (organization names), data/slovensko.json (map of Slovakia).
 """
 import argparse
@@ -36,6 +40,11 @@ DEFAULT_XML = ROOT.parent / "RybarskeReviry-databaza" / "reviry.xml"
 SITE = "https://rybarskereviry.sk/"
 PRICE = "6,99&nbsp;€"
 PLAY = "https://play.google.com/store/apps/details?id=sk.rr.rybarskereviry"
+ROK_REVIROV = 2026  # Zmeň, keď databázu aktualizuješ na nový rok.
+OG_IMAGE = SITE + "assets/img/og-image.jpg"
+OG_IMAGE_ALT = "Mapa revírov s presnými hranicami v aplikácii Rybárske Revíry SK"
+# Every address a revír page ever had (revír number -> slugs), so an old address never turns into a 404
+ADDRESSES = ROOT / "data" / "adresy-revirov.json"
 
 TYPES = {
     "kaprovy": {"code": "k", "adj": "kaprový", "label": "Kaprový revír", "water": "Kaprové vody"},
@@ -50,6 +59,12 @@ TYPE_AREA = {
     "20": "Rameno", "21": "Rameno", "23": "Mŕtve rameno", "24": "Odstavené rameno", "25": "Sústava ramien",
     "30": "Kanál", "31": "Kanál", "32": "Kanál", "34": "Kanál", "35": "Kanál", "36": "Kanál", "37": "Kanál", "38": "Kanál",
     "41": "Vodná nádrž", "42": "Vodná nádrž", "43": "Jazero", "45": "Štrkovisko", "48": "Zdrž vodného diela",
+}
+# The same in the accusative, for the opening sentence: "Ide o vodnú nádrž"
+WATER_ACC = {
+    "Rieka": "rieku", "Potok": "potok", "Rameno": "rameno", "Mŕtve rameno": "mŕtve rameno",
+    "Odstavené rameno": "odstavené rameno", "Sústava ramien": "sústavu ramien", "Kanál": "kanál",
+    "Vodná nádrž": "vodnú nádrž", "Jazero": "jazero", "Štrkovisko": "štrkovisko", "Zdrž vodného diela": "zdrž vodného diela",
 }
 
 # Slovak alphabetical order (ch is its own letter after h; á, é, ... sort with their base letter)
@@ -127,6 +142,41 @@ def area_from(description):
     return f"{whole:,}".replace(",", " ") + (m.group(2) or "") + " ha"
 
 
+# A web address split after a dot in the domain ('https://plavba. nsat.sk/...', '...nsat. sk/...'):
+# the part after the space continues the same domain and runs into a path
+SPLIT_URL = re.compile(r"((?:https?://|www\.)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.)\s+(?=[a-z0-9-]+(?:\.[a-z0-9-]+)*/)")
+URL = re.compile(r"(?:https?://|www\.)(?:(?!&nbsp;)[^\s<])+")
+
+
+def fix_split_urls(description):
+    return SPLIT_URL.sub(r"\1", description)
+
+
+def linkify(text_html):
+    """Web addresses in a description become links. An address ends where a dot or slash runs into the
+    next sentence ('…vodach.Zvýšená', '…opatrenia/Zvýšená') and drops a period or comma after it."""
+    def link(m):
+        url = re.split(r"(?<=[/.])(?=[A-ZÁÄČĎÉÍĹĽŇÓÔŔŠŤÚÝŽ])", m.group(0))[0].rstrip(".,;:)")
+        href = url if url.startswith("http") else "https://" + url
+        return f'<a href="{href}" target="_blank" rel="nofollow noopener">{url}</a>{m.group(0)[len(url):]}'
+    return URL.sub(link, text_html)
+
+
+def intro(r):
+    """The opening sentence of a revír's description, put together from its data (plain text)."""
+    text = f"{r['name']} je {TYPES[r['type']]['adj']} zväzový revír SRZ s číslom {r['number']}."
+    if r["water"]:
+        text += f" Ide o {WATER_ACC[r['water']]}" + (f" s rozlohou {r['area']}" if r["area"] else "") + "."
+    if r["border"]:
+        text += " Je to hraničný revír."
+    orgs = r["organizations"]
+    if len(orgs) == 1:
+        text += f" Revír obhospodaruje {orgs[0]}."
+    elif orgs:
+        text += f" Revír obhospodarujú {orgs[0]} a {orgs[1]}."
+    return text
+
+
 def distance_km(a, b):
     if not a["center"] or not b["center"]:
         return math.inf
@@ -163,6 +213,11 @@ def load_reviry(xml_path):
             warnings.append(f"revír id={el.get('id')} nemá číslo alebo názov, vynechaný")
             continue
         description = " ".join((el.findtext("description") or "").split())
+        fixed = fix_split_urls(description)
+        if fixed != description:
+            warnings.append(f"webová adresa v popise revíru {display_name(raw_name)} ({number}) bola rozdelená medzerou, "
+                            "na webe je opravená (opravte ju aj v databáze)")
+            description = fixed
         point = el.find("center_point")
         try:
             center = (float(point.get("lat")), float(point.get("lon"))) if point is not None else None
@@ -211,9 +266,12 @@ SPRITE = """  <svg class="sprite" aria-hidden="true" focusable="false">
   </svg>"""
 
 
-def page(*, title, description, canonical, asset, home, body, ld, current="", og_title=None, scripts=()):
+def page(*, title, description, canonical, asset, home, body, ld=None, current="", og_title=None, scripts=(),
+         head="", noindex=False):
     # Same menu as the homepage: section links lead back to its sections, Revíry is its own page.
-    # current: "reviry" on the list itself, "revir" on a revír page (Revíry stays highlighted there)
+    # current: "reviry" on the list itself, "revir" on the pages under it (Revíry stays highlighted there).
+    # head: tags that must come first in <head> (the 404 page's <base>, a redirect); canonical=None leaves
+    # out the canonical link and og:url (404); noindex keeps a page out of Google
     revir_class = "nav-revir is-active" if current == "revir" else "nav-revir"
     revir_attr = ' aria-current="page"' if current == "reviry" else ""
     nav = "\n".join([
@@ -229,23 +287,34 @@ def page(*, title, description, canonical, asset, home, body, ld, current="", og
         f'          <li><a href="{home}#otazky">FAQ</a></li>',
     ])
     extra_js = "\n".join(f'  <script src="{asset}{s}" defer></script>' for s in scripts)
-    ld_json = json.dumps(ld, ensure_ascii=False, indent=2)
+    ld_html = ""
+    if ld:
+        ld_html = f"""
+  <script type="application/ld+json">
+{json.dumps(ld, ensure_ascii=False, indent=2)}
+  </script>"""
+    first = f"\n  {head}" if head else ""
+    robots = '\n  <meta name="robots" content="noindex">' if noindex else ""
+    canonical_link = f'\n  <link rel="canonical" href="{canonical}">' if canonical else ""
+    og_url = f'\n  <meta property="og:url" content="{canonical}">' if canonical else ""
     return f"""<!doctype html>
 <html lang="sk">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">{first}
   <title>{esc(title)}</title>
-  <meta name="description" content="{esc(description)}">
-  <link rel="canonical" href="{canonical}">
+  <meta name="description" content="{esc(description)}">{robots}{canonical_link}
   <meta name="theme-color" content="#0B3640">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="sk_SK">
   <meta property="og:site_name" content="Rybárske Revíry SK">
   <meta property="og:title" content="{esc(og_title or title)}">
-  <meta property="og:description" content="{esc(description)}">
-  <meta property="og:url" content="{canonical}">
-  <meta property="og:image" content="{SITE}assets/img/icon-512.png">
+  <meta property="og:description" content="{esc(description)}">{og_url}
+  <meta property="og:image" content="{OG_IMAGE}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="{OG_IMAGE_ALT}">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="{asset}favicon.ico" sizes="any">
   <link rel="icon" href="{asset}assets/img/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="{asset}assets/img/apple-touch-icon.png">
@@ -253,10 +322,7 @@ def page(*, title, description, canonical, asset, home, body, ld, current="", og
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..100,400..800;1,62..100,400..800&display=swap">
   <link rel="stylesheet" href="{asset}assets/css/style.css">
-  <script>document.documentElement.classList.add('js')</script>
-  <script type="application/ld+json">
-{ld_json}
-  </script>
+  <script>document.documentElement.classList.add('js')</script>{ld_html}
 </head>
 <body>
   <a class="skip-link" href="#main">Preskočiť na obsah</a>
@@ -520,12 +586,12 @@ def detail_page(r, reviry):
     facts_html = "\n".join(f'            <div><dt>{label}</dt><dd>{value}</dd></div>' for label, value in facts)
     chip = t["label"] + (" · hraničný" if r["border"] else "")
 
-    about = ""
-    if r["description"]:
-        about = f"""    <section class="section-sm revir-about" aria-labelledby="about-title">
+    # Always shown: a sentence put together from the revír's data, then its description if it has one
+    text = f'\n        <p class="revir-about__text">{linkify(nbsp(r["description"]))}</p>' if r["description"] else ""
+    about = f"""    <section class="section-sm revir-about" aria-labelledby="about-title">
       <div class="container">
         <h2 id="about-title" class="h3">Popis revíru</h2>
-        <p class="revir-about__text">{nbsp(r["description"])}</p>
+        <p class="revir-about__text">{nbsp(intro(r))}</p>{text}
         <p class="revir-about__note">Údaje sú informatívne. Záväzné je aktuálne znenie rybárskeho poriadku SRZ.</p>
       </div>
     </section>"""
@@ -604,14 +670,14 @@ def detail_page(r, reviry):
 
     water = f", {r['water'].lower()}" if r["water"] else ""
     org = f", {r['organizations'][0]}" if r["organizations"] else ""
-    description = (f"{r['name']}, číslo revíru {r['number']}. {t['adj'].capitalize()} zväzový revír SRZ{water}{org}. "
-                   f"Poloha revíru na mape, popis a presné hranice v aplikácii Rybárske Revíry SK.")
+    description = (f"Rybolov na revíri {r['name']}: {t['adj']} zväzový revír SRZ č. {r['number']}{water}{org}. "
+                   f"Poloha na mape a popis revíru. Presné hranice v aplikácii Rybárske Revíry SK.")
     canonical = f"{SITE}revir/{r['slug']}.html"
     water_ld = {
         "@type": "BodyOfWater",
         "name": r["name"],
         "identifier": {"@type": "PropertyValue", "propertyID": "Číslo revíru SRZ", "value": r["number"]},
-        "description": r["description"] or f"{t['label']} SRZ číslo {r['number']}.",
+        "description": r["description"] or intro(r),
         "url": canonical,
     }
     if r["center"]:
@@ -632,7 +698,7 @@ def detail_page(r, reviry):
         ],
     }
     return page(
-        title=f"{r['name']} ({r['number']}) – {t['adj']} revír | Rybárske Revíry SK",
+        title=f"{r['name']} – rybársky revír {r['number']}, rybolov | Rybárske Revíry SK",
         og_title=f"{r['name']} – {t['adj']} revír {r['number']}",
         description=description, canonical=canonical, asset="../", home="../", body=body, ld=ld,
         current="revir")
@@ -644,10 +710,15 @@ def list_page(reviry):
     for r in reviry:
         groups.setdefault(group_letter(r["name"]), []).append(r)
     blocks = []
+    ids = set()
     for letter, items in groups.items():
         rows = "\n".join("              " + row(r, "revir/" + r["slug"] + ".html") for r in items)
-        blocks.append(f"""          <section class="letter-group" aria-labelledby="l-{slugify(letter)}">
-            <h2 id="l-{slugify(letter)}" class="letter-group__letter">{letter}</h2>
+        # Č, Š and Ž would get the same id as C, S and Z: the second one becomes l-c2, l-s2, l-z2
+        anchor = "l-" + slugify(letter)
+        anchor = next(a for a in (anchor, *(f"{anchor}{i}" for i in range(2, 9))) if a not in ids)
+        ids.add(anchor)
+        blocks.append(f"""          <section class="letter-group" aria-labelledby="{anchor}">
+            <h2 id="{anchor}" class="letter-group__letter">{letter}</h2>
             <ul class="revir-rows">
 {rows}
             </ul>
@@ -666,7 +737,7 @@ def list_page(reviry):
             <li aria-current="page">Revíry</li>
           </ol>
         </nav>
-        <h1 id="list-title" class="h2">Zväzové revíry na Slovensku</h1>
+        <h1 id="list-title" class="h2">Zväzové rybárske revíry SRZ {ROK_REVIROV}</h1>
         <p class="list-hero__lead">{plural(n, 'Jeden', 'Všetky', 'Všetkých')} {n} kaprových a&nbsp;lipňových revírov SRZ s&nbsp;číslom revíru. Hľadajte podľa názvu toku, nádrže alebo čísla revíru.</p>
         <form class="revir-filter" role="search" action="reviry.html" method="get" data-revir-filter>
           <div class="search-field">
@@ -702,7 +773,7 @@ def list_page(reviry):
     ld = {
         "@context": "https://schema.org",
         "@type": "ItemList",
-        "name": "Zväzové revíry na Slovensku",
+        "name": f"Zväzové rybárske revíry SRZ {ROK_REVIROV}",
         "numberOfItems": n,
         "itemListElement": [
             {"@type": "ListItem", "position": i + 1, "name": r["name"], "url": f"{SITE}revir/{r['slug']}.html"}
@@ -710,11 +781,88 @@ def list_page(reviry):
         ],
     }
     return page(
-        title="Zoznam rybárskych revírov SRZ – kaprové a lipňové revíry | Rybárske Revíry SK",
-        og_title="Zväzové revíry na Slovensku",
-        description=f"Zoznam {n} kaprových a lipňových zväzových revírov SRZ s číslami revírov. Vyhľadajte revír podľa názvu alebo čísla a pozrite si jeho popis a hranice v aplikácii.",
+        title=f"Zväzové rybárske revíry SRZ {ROK_REVIROV} – zoznam kaprových a lipňových revírov",
+        og_title=f"Zväzové rybárske revíry SRZ {ROK_REVIROV}",
+        description=(f"Zoznam všetkých {n} kaprových a lipňových zväzových revírov SRZ na rok {ROK_REVIROV} s číslami revírov. "
+                     "Nájdite revír podľa názvu alebo čísla a pozrite si jeho polohu a popis."),
         canonical=f"{SITE}reviry.html", asset="", home="./", body=body, ld=ld, current="reviry",
         scripts=("assets/js/reviry-data.js", "assets/js/reviry.js"))
+
+
+def note_page(*, title, heading, text, links, asset, home, canonical=None, head=""):
+    """A short page that only says something and offers a way on: 404, a moved or a removed revír.
+    None of them belongs in Google or in the sitemap."""
+    actions = "\n".join(f'          <a class="btn-plain" href="{href}">{label}</a>' for label, href in links)
+    para = f'\n        <p class="list-hero__lead">{text}</p>' if text else ""
+    body = f"""    <section class="list-hero page-note" aria-labelledby="note-title">
+      <div class="container">
+        <h1 id="note-title" class="h2">{heading}</h1>{para}
+        <div class="page-note__actions">
+{actions}
+        </div>
+      </div>
+    </section>"""
+    return page(title=title, description=html.unescape(re.sub(r"<[^>]+>", "", text or heading)), canonical=canonical,
+                asset=asset, home=home, body=body, current="revir", head=head, noindex=True)
+
+
+def moved_page(new):
+    """An old address of a revír that is now called differently: goes on to its page at once."""
+    href = f"{new['slug']}.html"
+    return note_page(
+        title=f"{new['name']} | Rybárske Revíry SK", heading=f"Revír sa teraz volá {nbsp(new['name'])}.",
+        text=f'Stránka revíru je na novej adrese: <a href="{href}">{nbsp(new["name"])}</a>.',
+        links=[(f"Otvoriť revír {nbsp(new['name'])}", href), ("Zoznam revírov", "../reviry.html")],
+        asset="../", home="../", canonical=f"{SITE}revir/{href}",
+        head=f'<meta http-equiv="refresh" content="0; url={href}">')
+
+
+def gone_page():
+    return note_page(
+        title="Revír už nie je v zozname | Rybárske Revíry SK",
+        heading="Tento revír už v&nbsp;zozname zväzových revírov nie je.", text="",
+        links=[("Zoznam revírov", "../reviry.html"), ("Domov", "../")], asset="../", home="../")
+
+
+# The 404 page is shown at any address (/revir/neexistuje.html, also under /RybarskeReviry/ on GitHub
+# Pages), so it sets <base> to the site's root before anything loads. Links to a section of the page
+# itself (#main) would follow the <base> to the homepage, so they get the page's own address back
+NOT_FOUND_HEAD = ("<script>(function () { var b = document.createElement('base'); "
+                  "b.href = location.pathname.indexOf('/RybarskeReviry/') === 0 ? '/RybarskeReviry/' : '/'; "
+                  "document.head.appendChild(b); document.addEventListener('DOMContentLoaded', function () { "
+                  "document.querySelectorAll('a[href^=\"#\"]').forEach(function (a) { "
+                  "a.href = location.pathname + a.getAttribute('href'); }); }); })();</script>")
+
+
+def not_found_page():
+    return note_page(
+        title="Stránka sa nenašla | Rybárske Revíry SK", heading="Túto stránku sme nenašli",
+        text="Revír mohol zmeniť názov alebo adresu. Nájdite ho v&nbsp;zozname podľa názvu alebo čísla.",
+        links=[("Zoznam revírov", "reviry.html"), ("Domov", "./")], asset="", home="./", head=NOT_FOUND_HEAD)
+
+
+def old_addresses(reviry):
+    """Adds today's addresses to data/adresy-revirov.json and returns the file's new content plus a page
+    for every address a revír no longer uses: a redirect to its new name, or a note that it's gone."""
+    known = json.loads(ADDRESSES.read_text(encoding="utf-8")) if ADDRESSES.is_file() else {}
+    comment = known.pop("_comment", "Číslo revíru -> všetky adresy (revir/<adresa>.html), ktoré revír kedy mal. "
+                                    "Dopĺňa ho tools/build_reviry.py, nič nemažte.")
+    for r in reviry:
+        slugs = known.setdefault(r["number"], [])
+        if r["slug"] not in slugs:
+            slugs.append(r["slug"])
+    current = {r["slug"] for r in reviry}
+    by_number = {r["number"]: r for r in reviry}
+    pages = {}
+    for number, slugs in known.items():
+        for slug in slugs:
+            path = f"revir/{slug}.html"
+            if slug in current or path in pages:
+                continue
+            pages[path] = moved_page(by_number[number]) if number in by_number else gone_page()
+    lines = [f"  {json.dumps('_comment')}: {json.dumps(comment, ensure_ascii=False)}"]
+    lines += [f"  {json.dumps(number)}: {json.dumps(known[number], ensure_ascii=False)}" for number in sorted(known)]
+    return "{\n" + ",\n".join(lines) + "\n}\n", pages
 
 
 def main():
@@ -738,7 +886,10 @@ def main():
 
     # Everything is built in memory first, so a broken database never leaves the site half updated
     files = {f"revir/{r['slug']}.html": detail_page(r, reviry) for r in reviry}
+    files["data/adresy-revirov.json"], moved = old_addresses(reviry)
+    files.update(moved)
     files["reviry.html"] = list_page(reviry)
+    files["404.html"] = not_found_page()
     index = [{"n": r["name"], "c": r["number"], "t": TYPES[r["type"]]["code"], "s": r["slug"], "k": search_key(r)} for r in reviry]
     files["assets/js/reviry-data.js"] = ("// Generated by tools/build_reviry.py: names and numbers for the revír search\nwindow.RR_REVIRY = "
                                          + json.dumps(index, ensure_ascii=False, separators=(",", ":")) + ";\n")
@@ -751,6 +902,8 @@ def main():
     # the site preview) load it instead of an old cached copy. The hand-written pages are kept current too
     for path in ("index.html", "privacy_policy.html"):
         files[path] = (ROOT / path).read_text(encoding="utf-8")
+    # The number of revíry on the homepage follows the database: "349 kaprových…", "spolu 349."
+    files["index.html"] = re.sub(r"\d+(?=(?: |&nbsp;)kaprových)|(?<=spolu )\d+(?=\.)", str(len(reviry)), files["index.html"])
     versions = {}
     for path in ("assets/css/style.css", "assets/js/main.js", "assets/js/reviry.js", "assets/js/reviry-data.js"):
         content = files.get(path) or (ROOT / path).read_text(encoding="utf-8")
@@ -784,8 +937,9 @@ def main():
         if not target.is_file() or target.read_text(encoding="utf-8") != content:
             target.write_text(content, encoding="utf-8")
     kapr = sum(r["type"] == "kaprovy" for r in reviry)
-    print(f"{len(reviry)} revírov ({kapr} kaprových, {len(reviry) - kapr} lipňových): "
-          "reviry.html, revir/*.html, assets/js/reviry-data.js, sitemap.xml, robots.txt, verzie CSS a JS v index.html a privacy_policy.html")
+    print(f"{len(reviry)} revírov ({kapr} kaprových, {len(reviry) - kapr} lipňových), {len(moved)} starých adries: "
+          "reviry.html, revir/*.html, 404.html, assets/js/reviry-data.js, data/adresy-revirov.json, sitemap.xml, robots.txt, "
+          "počet revírov a verzie CSS a JS v index.html a privacy_policy.html")
 
 
 if __name__ == "__main__":
