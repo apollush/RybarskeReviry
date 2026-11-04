@@ -1837,6 +1837,67 @@ html:not(.js) .tour-panel[hidden] { display: grid; }
 .page-note__actions .btn-plain:first-child { background: var(--ink); color: var(--on-dark); }
 .page-note__actions .btn-plain:first-child:hover { background: var(--ink-900); }
 
+/* Both stores (APP_STORE_URL in tools/build_reviry.py): a computer and a page without JavaScript show
+   both buttons, a phone only its own (html.is-ios / html.is-android are set in <head>). The small buttons
+   say the store's name side by side and the call to action when they stand alone */
+.store-buttons { display: flex; flex-wrap: wrap; gap: 12px; }
+.store-buttons .btn-buy { margin-top: 0; }
+.pricing .store-buttons { margin-top: 32px; }
+.final-main .store-buttons { margin-top: 28px; }
+html.is-ios [data-store="play"],
+html.is-android [data-store="appstore"] { display: none; }
+.btn-buy__one { display: none; }
+html.is-ios .btn-buy__one,
+html.is-android .btn-buy__one { display: inline; }
+html.is-ios .btn-buy__both,
+html.is-android .btn-buy__both { display: none; }
+
+/* New price list (CENNIK = "novy"): Zadarmo and Plná verzia side by side, one under the other on phones */
+.pricing--free .price-desc { max-width: 52ch; }
+.price-cards {
+  display: grid;
+  gap: 20px;
+  margin-top: 40px;
+}
+.price-card {
+  display: flex;
+  flex-direction: column;
+  padding: 28px 24px 8px;
+  border: 1px solid var(--line-dark);
+  border-radius: var(--radius-md);
+}
+.price-card--full {
+  border: 2px solid var(--map-poly);
+  background: rgba(143, 166, 255, .08);
+}
+.price-card__name {
+  font-size: 1.375rem;
+  font-weight: 800;
+}
+.price-card .price { margin-top: 16px; }
+.price-card .price__value { font-size: clamp(3rem, 2.2rem + 3vw, 4.25rem); }
+.price-card__note { margin-top: 8px; color: var(--on-dark-2); }
+.price-option + .price-option {
+  margin-top: 20px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line-dark);
+}
+.price-card .ticks { align-self: stretch; margin-top: 24px; border-bottom: 0; }
+.price-founders {
+  max-width: 60ch;
+  margin-top: 28px;
+  padding: 16px 20px;
+  border: 1px solid var(--line-dark);
+  border-radius: 14px;
+  color: var(--on-dark);
+}
+.pricing--free .fine { max-width: 60ch; }
+
+@media (min-width: 768px) {
+  .price-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .price-card { padding: 32px 32px 12px; }
+}
+
 @media (min-width: 640px) {
   .letter-groups { columns: 2; }
 }

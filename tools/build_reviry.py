@@ -37,10 +37,22 @@ import unicodedata
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+# Cenník na webe: "jednorazovo" = dnešných 6,99 €, "novy" = zadarmo + 5,99 € ročne alebo 14,99 € navždy.
+# Zapni "novy" až v deň, keď ho má aj aplikácia v Google Play.
+CENNIK = "jednorazovo"
+# Odkaz na aplikáciu v App Store. Prázdny = "Na iPhone čoskoro".
+APP_STORE_URL = ""
+APP_STORE_ID = ""   # číslo aplikácie v App Store (pre banner v Safari)
+APP_STORE_PT = ""   # provider token z App Store Connect (meranie, odkiaľ ľudia prišli)
+APP_STORE_PREDOBJEDNAVKA = False  # True, kým je v App Store len predobjednávka: tlačidlo "Predobjednať v App Store"
+# Ceny s DPH, na webe sa píšu len odtiaľto
+CENA_JEDNORAZOVO = "6,99"  # dnešný cenník v Google Play
+CENA_ROCNE = "5,99"        # nový cenník: Plná verzia na rok
+CENA_NAVZDY = "14,99"      # nový cenník: Plná verzia navždy
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_XML = ROOT.parent / "RybarskeReviry-databaza" / "reviry.xml"
 SITE = "https://rybarskereviry.sk/"
-PRICE = "6,99&nbsp;€"
 PLAY = "https://play.google.com/store/apps/details?id=sk.rr.rybarskereviry"
 ROK_REVIROV = 2026  # Zmeň, keď databázu aktualizuješ na nový rok.
 OG_IMAGE = SITE + "assets/img/og-image.jpg"
@@ -117,6 +129,244 @@ def nbsp(text):
 
 def play_url(content):
     return f"{PLAY}&amp;referrer=utm_source%3Drybarskereviry.sk%26utm_medium%3Dweb%26utm_content%3D{content}"
+
+
+def app_store_url(content):
+    """App Store link with Apple's campaign fields: pt = provider token, ct = the place on the site (as utm_content)."""
+    params = ([f"pt={APP_STORE_PT}"] if APP_STORE_PT else []) + [f"ct={content[:100]}"]
+    return APP_STORE_URL + ("&amp;" if "?" in APP_STORE_URL else "?") + "&amp;".join(params)
+
+
+def eur(price):
+    return f"{price}&nbsp;€"
+
+
+def novy():
+    return CENNIK == "novy"
+
+
+# Prices, store buttons and the texts around them, for both price lists, with or without the iPhone app.
+# With CENNIK = "jednorazovo" and no App Store they come out exactly as the site looked before the switches.
+
+# In <head> of every page: "js" for the styles, "is-ios" / "is-android" so that a phone sees only its own
+# store button from the first paint (iPadOS reports itself as a Mac with a touch screen)
+HEAD_JS = ("<script>(function (h, ua) { h.classList.add('js'); "
+           "if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) h.classList.add('is-ios'); "
+           "else if (/Android/.test(ua)) h.classList.add('is-android'); })(document.documentElement, navigator.userAgent)</script>")
+
+
+def app_banner():
+    """Safari's banner with the app at the top of the page."""
+    return f'<meta name="apple-itunes-app" content="app-id={APP_STORE_ID}">' if APP_STORE_ID else ""
+
+
+def platforms(sentence=True):
+    if APP_STORE_URL:
+        return "Pre Android aj iPhone." if sentence else "Pre Android aj iPhone"
+    return "Pre telefóny s&nbsp;Androidom." if sentence else "Pre telefóny s&nbsp;Androidom"
+
+
+def big_button(store, cta):
+    """One store button with a label and a line under it."""
+    if store == "play":
+        href = play_url(cta)
+        if novy():
+            label, meta = "Stiahnuť zadarmo", "Google Play · Android"
+        elif APP_STORE_URL:
+            label, meta = "Stiahnuť v Google Play", f"{eur(CENA_JEDNORAZOVO)} jednorazovo · Android"
+        else:
+            label, meta = "Chcem aplikáciu", f"{eur(CENA_JEDNORAZOVO)} jednorazovo · Google Play"
+    else:
+        href = app_store_url(cta)
+        label = ("Predobjednať v App Store" if APP_STORE_PREDOBJEDNAVKA
+                 else "Stiahnuť zadarmo" if novy() else "Stiahnuť v App Store")
+        meta = "App Store · iPhone"
+    store_attr = f' data-store="{store}"' if APP_STORE_URL else ""
+    return f"""<a class="btn-buy"{store_attr} data-cta="{cta}" href="{href}">
+  <span class="btn-buy__label">{label}</span>
+  <span class="btn-buy__meta">{meta}</span>
+</a>"""
+
+
+def buy_button(cta, indent=""):
+    """The buy button: Google Play, and next to it App Store once APP_STORE_URL is set. A phone sees only
+    its own store, a computer and a page without JavaScript see both."""
+    if APP_STORE_URL:
+        out = '<div class="store-buttons">\n' + "\n".join(
+            "  " + big_button(store, cta).replace("\n", "\n  ") for store in ("play", "appstore")) + "\n</div>"
+    else:
+        out = big_button("play", cta)
+    return out.replace("\n", "\n" + indent)
+
+
+def small_buttons(cta, indent=""):
+    """The small button in the header and in the sticky bar. data-short is what main.js shows when the
+    longer text doesn't fit. With both stores a computer shows both by store name, a phone only its own."""
+    one = "Stiahnuť zadarmo" if novy() else "Stiahnuť"
+    short = ' data-short="Stiahnuť"' if novy() else ""
+    if not APP_STORE_URL:
+        return f'<a class="btn-buy btn-buy--sm" data-cta="{cta}"{short} href="{play_url(cta)}">{one}</a>'
+    buttons = []
+    for store, href, name in (("play", play_url(cta), "Google Play"), ("appstore", app_store_url(cta), "App Store")):
+        text, data = (("Predobjednať", "") if store == "appstore" and APP_STORE_PREDOBJEDNAVKA else (one, short))
+        buttons.append(f'<a class="btn-buy btn-buy--sm" data-store="{store}" data-cta="{cta}"{data} href="{href}">'
+                       f'<span class="btn-buy__one">{text}</span><span class="btn-buy__both">{name}</span></a>')
+    return ("\n" + indent).join(buttons)
+
+
+def sticky_bar(asset):
+    if novy():
+        note = f"<span>Zadarmo · Plná verzia od {eur(CENA_ROCNE)}</span>"
+    elif APP_STORE_URL:
+        note = (f'<span data-store="play">{eur(CENA_JEDNORAZOVO)} jednorazovo</span>'
+                '<span data-store="appstore">App Store · iPhone</span>')
+    else:
+        note = f"<span>{eur(CENA_JEDNORAZOVO)} jednorazovo</span>"
+    return f"""<div class="sticky-buy" data-sticky inert>
+  <img src="{asset}assets/img/icon-96.png" width="40" height="40" alt="">
+  <p class="sticky-buy__text"><strong>Rybárske Revíry SK</strong>{note}</p>
+  {small_buttons('sticky', '  ')}
+</div>"""
+
+
+def tick(text):
+    return f'<li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>{text}</span></li>'
+
+
+def price_section(count):
+    """The #cena section of the homepage."""
+    if not novy():
+        ticks = "\n".join("    " + tick(t) for t in (
+            f"{count} kaprových a&nbsp;lipňových zväzových revírov", "Presné hranice revírov na mape aj na satelite",
+            "Navigácia k&nbsp;vode cez Google Maps", "98 druhov rýb s&nbsp;lovnými mierami a&nbsp;hájením",
+            "Rybársky zákon, vyhláška a&nbsp;poriadky", "Všetky budúce aktualizácie"))
+        return f"""<section id="cena" class="section section-dark pricing" aria-labelledby="price-title">
+  <div class="container price-grid">
+    <div class="price-main">
+      <h2 id="price-title" class="h2">Jedna platba. Aplikácia je vaša.</h2>
+      <p class="price"><span class="price__value">{eur(CENA_JEDNORAZOVO)}</span><span class="price__unit">jednorazovo v&nbsp;Google Play</span></p>
+      <p class="price-desc">Zaplatíte raz a&nbsp;aplikácia je vaša. Aktualizácie revírov, máp aj predpisov dostanete v&nbsp;cene.</p>
+      {buy_button('price', '      ')}
+      <p class="fine">{platforms()} Podľa údajov v&nbsp;Google Play aplikácia nezdieľa žiadne údaje s&nbsp;tretími stranami.</p>
+    </div>
+    <ul class="ticks" aria-label="Čo je v cene">
+{ticks}
+    </ul>
+  </div>
+</section>"""
+    free = "\n".join("        " + tick(t) for t in (
+        f"Zoznam a&nbsp;popisy všetkých {count} revírov", "Revíry na mape a&nbsp;najbližšie revíry", "Navigácia k&nbsp;revíru",
+        "98 druhov rýb s&nbsp;lovnými mierami a&nbsp;hájením", "Rybárske poriadky, zákon a&nbsp;vyhláška",
+        "Prehľad dňa: slnko, denná doba lovu, počasie", "3 ukážky presných hraníc"))
+    full = "\n".join("        " + tick(t) for t in (
+        "Všetko, čo je zadarmo", f"Presné hranice všetkých {count} revírov na mape aj na satelite",
+        "<strong>Kde som?</strong>: revír, v&nbsp;ktorom práve stojíte", "Všetky budúce funkcie a&nbsp;aktualizácie revírov"))
+    stores = "Google Play alebo App Store" if APP_STORE_URL else "Google Play"
+    return f"""<section id="cena" class="section section-dark pricing pricing--free" aria-labelledby="price-title">
+  <div class="container">
+    <h2 id="price-title" class="h2">Stiahnite zadarmo</h2>
+    <p class="price-desc">Revíry, ryby a&nbsp;predpisy máte zadarmo. Presné hranice a&nbsp;<strong>Kde som?</strong> odomknete v&nbsp;Plnej verzii, ročne alebo navždy.</p>
+    <div class="price-cards">
+      <div class="price-card">
+        <h3 class="price-card__name">Zadarmo</h3>
+        <p class="price"><span class="price__value">{eur('0')}</span></p>
+        <p class="price-card__note">Stačí si aplikáciu stiahnuť</p>
+        <ul class="ticks" aria-label="Čo je zadarmo">
+{free}
+        </ul>
+      </div>
+      <div class="price-card price-card--full">
+        <h3 class="price-card__name">Plná verzia</h3>
+        <div class="price-option">
+          <p class="price"><span class="price__value">{eur(CENA_ROCNE)}</span><span class="price__unit">ročne</span></p>
+          <p class="price-card__note">Aktuálne revíry a&nbsp;pravidlá každý rok. Zrušíte kedykoľvek.</p>
+        </div>
+        <div class="price-option">
+          <p class="price"><span class="price__value">{eur(CENA_NAVZDY)}</span><span class="price__unit">navždy</span></p>
+          <p class="price-card__note">Jedna platba, bez predplatného.</p>
+        </div>
+        <ul class="ticks" aria-label="Čo je v Plnej verzii">
+{full}
+        </ul>
+      </div>
+    </div>
+    {buy_button('price', '    ')}
+    <p class="price-founders">Kúpili ste si aplikáciu za {eur(CENA_JEDNORAZOVO)}? Plnú verziu máte navždy, bez predplatného.</p>
+    <p class="fine">Ceny sú vrátane DPH. Plnú verziu kúpite priamo v&nbsp;aplikácii. Ročná platba sa obnovuje automaticky a&nbsp;zrušíte ju kedykoľvek v&nbsp;nastaveniach {stores}. Bez reklám.</p>
+  </div>
+</section>"""
+
+
+def faq(question, answer):
+    return f"""<details>
+  <summary>{question}<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+  <div class="answer"><p>{answer}</p></div>
+</details>"""
+
+
+def faq_price():
+    """The first questions on the homepage: which phones, and what it costs."""
+    mail = "mailto:info@rybarskereviry.sk?subject=Chcem%20aplik%C3%A1ciu%20na%20iPhone"
+    phones = ("Na telefónoch s&nbsp;Androidom aj na iPhone. Stiahnete si ju z&nbsp;Google Play alebo z&nbsp;App Store." if APP_STORE_URL else
+              f'Na telefónoch s&nbsp;Androidom, stiahnete si ju z&nbsp;Google Play. Verziu pre iPhone pripravujeme. Napíšte nám na <a href="{mail}">info@rybarskereviry.sk</a> a&nbsp;dáme vám vedieť, keď bude v&nbsp;App Store.')
+    items = [faq("Na akých telefónoch aplikácia funguje?", phones)]
+    if not novy():
+        items.append(faq("Je to naozaj jednorazová platba?",
+                         f"Áno. Dnes zaplatíte {eur(CENA_JEDNORAZOVO)} raz v&nbsp;Google Play a&nbsp;aktualizácie revírov aj predpisov dostanete v&nbsp;cene. Kto si aplikáciu kúpil, bude ju mať aj naďalej bez ďalších platieb."))
+    else:
+        items += [
+            faq("Koľko aplikácia stojí?",
+                f"Stiahnete ju zadarmo. Zoznam revírov, ryby, lovné miery, hájenie, predpisy a&nbsp;prehľad dňa používate bez platby. Presné hranice revírov a&nbsp;<strong>Kde som?</strong> odomknete v&nbsp;Plnej verzii za {eur(CENA_ROCNE)} ročne alebo {eur(CENA_NAVZDY)} navždy."),
+            faq("Aký je rozdiel medzi ročnou platbou a&nbsp;platbou navždy?",
+                "Obe odomknú to isté, vrátane budúcich funkcií a&nbsp;aktualizácií revírov. Ročná platba sa obnovuje automaticky a&nbsp;zrušíte ju kedykoľvek. Platba navždy je jednorazová, bez predplatného."),
+            faq(f"Už mám aplikáciu kúpenú za {eur(CENA_JEDNORAZOVO)}. Musím platiť znova?",
+                'Nie. Kto si aplikáciu kúpil pred zmenou ceny, má Plnú verziu navždy, bez predplatného. Stačí si aplikáciu aktualizovať v&nbsp;Google Play. Ak by sa Plná verzia neodomkla, napíšte nám na <a href="mailto:info@rybarskereviry.sk">info@rybarskereviry.sk</a> a&nbsp;pošlite číslo objednávky z&nbsp;Google Play (začína sa GPA.).'),
+        ]
+    return "\n".join(items)
+
+
+def home_description(count):
+    start = f"Mapa {count} kaprových a lipňových zväzových revírov SRZ s ručne zakreslenými hranicami."
+    if novy():
+        return (f"{start} Zadarmo na stiahnutie pre Android{' aj iPhone' if APP_STORE_URL else ', čoskoro aj iPhone'}. "
+                "Lovné miery, hájenie a rybárske poriadky v mobile.")
+    return (f"{start} Navigácia k vode, lovné miery, doba hájenia a rybárske poriadky v mobile. "
+            f"{'Pre Android aj iPhone.' if APP_STORE_URL else 'Pre Android, čoskoro aj iPhone.'}")
+
+
+def regions(path, count):
+    """What goes between the <!-- gen:… --> marks of the hand-written pages."""
+    if path == "privacy_policy.html":
+        return {"app-banner": app_banner(), "header-buy": small_buttons("privacy")}
+    phones_li = f'<li><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><span>{platforms(False)}</span></li>'
+    return {
+        "description": f'<meta name="description" content="{esc(home_description(count))}">',
+        "app-banner": app_banner(),
+        "header-buy": small_buttons("header"),
+        "hero-buy": buy_button("hero"),
+        "hero-phones": phones_li,
+        "price": price_section(count),
+        "faq-price": faq_price(),
+        "final-buy": buy_button("final"),
+        "sticky": sticky_bar(""),
+    }
+
+
+def fill(text, path, parts):
+    """Writes each part between its <!-- gen:name --> and <!-- /gen:name --> marks, indented like the mark."""
+    for name, content in parts.items():
+        mark = re.compile(rf"([ \t]*)<!-- gen:{name} -->.*?<!-- /gen:{name} -->", re.S)
+        if not mark.search(text):
+            raise SystemExit(f"Chyba: v {path} chýba značka <!-- gen:{name} -->, nič sa nezapísalo.")
+
+        def put(m, name=name, content=content):
+            pad = m.group(1)
+            if not content:
+                return f"{pad}<!-- gen:{name} --><!-- /gen:{name} -->"
+            body = "\n".join(pad + line if line else line for line in content.split("\n"))
+            return f"{pad}<!-- gen:{name} -->\n{body}\n{pad}<!-- /gen:{name} -->"
+        text = mark.sub(put, text, count=1)
+    return text
 
 
 def display_name(raw):
@@ -299,13 +549,14 @@ def page(*, title, description, canonical, asset, home, body, ld=None, current="
     robots = '\n  <meta name="robots" content="noindex">' if noindex else ""
     canonical_link = f'\n  <link rel="canonical" href="{canonical}">' if canonical else ""
     og_url = f'\n  <meta property="og:url" content="{canonical}">' if canonical else ""
+    banner = f"\n  {app_banner()}" if app_banner() else ""
     return f"""<!doctype html>
 <html lang="sk">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">{first}
   <title>{esc(title)}</title>
-  <meta name="description" content="{esc(description)}">{robots}{canonical_link}
+  <meta name="description" content="{esc(description)}">{robots}{canonical_link}{banner}
   <meta name="theme-color" content="#0B3640">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="sk_SK">
@@ -324,7 +575,7 @@ def page(*, title, description, canonical, asset, home, body, ld=None, current="
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..100,400..800;1,62..100,400..800&display=swap">
   <link rel="stylesheet" href="{asset}assets/css/style.css">
-  <script>document.documentElement.classList.add('js')</script>{ld_html}
+  {HEAD_JS}{ld_html}
 </head>
 <body>
   <a class="skip-link" href="#main">Preskočiť na obsah</a>
@@ -346,7 +597,7 @@ def page(*, title, description, canonical, asset, home, body, ld=None, current="
 {nav}
         </ul>
       </nav>
-      <a class="btn-buy btn-buy--sm" data-cta="header" href="{play_url('header')}">Stiahnuť</a>
+      {small_buttons('header', '      ')}
     </div>
   </header>
 
@@ -365,11 +616,7 @@ def page(*, title, description, canonical, asset, home, body, ld=None, current="
     </div>
   </footer>
 
-  <div class="sticky-buy" data-sticky inert>
-    <img src="{asset}assets/img/icon-96.png" width="40" height="40" alt="">
-    <p class="sticky-buy__text"><strong>Rybárske Revíry SK</strong><span>{PRICE} jednorazovo</span></p>
-    <a class="btn-buy btn-buy--sm" data-cta="sticky" href="{play_url('sticky')}">Stiahnuť</a>
-  </div>
+  {sticky_bar(asset).replace(chr(10), chr(10) + '  ')}
 
   <div class="cookie" id="cookie" role="region" aria-label="Súhlas s cookies" hidden>
     <p>Analytické cookies (Google Analytics) nám pomáhajú zistiť, ako sa stránka používa. Načítame ich iba s&nbsp;vaším súhlasom. <a href="{asset}privacy_policy.html">Ochrana súkromia</a></p>
@@ -384,13 +631,6 @@ def page(*, title, description, canonical, asset, home, body, ld=None, current="
 </body>
 </html>
 """
-
-
-def buy_button(cta, label="Chcem aplikáciu"):
-    return f"""<a class="btn-buy" data-cta="{cta}" href="{play_url(cta)}">
-              <span class="btn-buy__label">{label}</span>
-              <span class="btn-buy__meta">{PRICE} jednorazovo · Google Play</span>
-            </a>"""
 
 
 def row(r, href, more=""):
@@ -409,9 +649,9 @@ def cta_band(cta, count):
       <div class="container revir-cta__inner">
         <div>
           <h2 id="cta-title" class="h2">Všetky revíry s&nbsp;hranicami v&nbsp;telefóne</h2>
-          <p>Všetkých {count} kaprových a&nbsp;lipňových revírov, navigácia k&nbsp;vode, lovné miery a&nbsp;rybárske poriadky. Pre telefóny s&nbsp;Androidom.</p>
+          <p>Všetkých {count} kaprových a&nbsp;lipňových revírov, navigácia k&nbsp;vode, lovné miery a&nbsp;rybárske poriadky. {platforms()}{' Zadarmo na stiahnutie.' if novy() else ''}</p>
         </div>
-        {buy_button(cta)}
+        {buy_button(cta, '        ')}
       </div>
     </section>"""
 
@@ -590,6 +830,16 @@ def detail_page(r, reviry, org_slugs, tok_slugs):
         facts.append(("Rozloha", esc(r["area"])))
     facts_html = "\n".join(f'            <div><dt>{label}</dt><dd>{value}</dd></div>' for label, value in facts)
     chip = t["label"] + (" · hraničný" if r["border"] else "")
+    if novy():
+        buy_note = "Revír nájdete v&nbsp;aplikácii zadarmo. Presné hranice a&nbsp;<strong>Kde som?</strong> sú v&nbsp;Plnej verzii."
+        inapp = ["Presné hranice revíru na mape aj na satelite (Plná verzia)",
+                 "<strong>Kde som?</strong>: či stojíte práve v&nbsp;tomto revíri (Plná verzia)"]
+    else:
+        buy_note = "Hranice, navigácia a&nbsp;vzdialenosť k&nbsp;revíru sú v&nbsp;aplikácii."
+        inapp = ["Presné hranice revíru na mape aj na satelite"]
+    inapp = "\n".join("          " + tick(item) for item in inapp + [
+        "Popis a&nbsp;obmedzenia lovu z&nbsp;rybárskeho poriadku", "Obdobie lovu a&nbsp;dennú dobu lovu",
+        "Navigáciu k&nbsp;vode cez Google Maps", "Vzdialenosť od vás a&nbsp;ďalšie revíry v&nbsp;okolí"])
 
     # Always shown: a sentence put together from the revír's data, then its description if it has one
     text = f'\n        <p class="revir-about__text">{linkify(nbsp(r["description"]))}</p>' if r["description"] else ""
@@ -649,8 +899,8 @@ def detail_page(r, reviry, org_slugs, tok_slugs):
 {facts_html}
             </dl>
             <div class="revir-actions" data-sticky-hide>
-              {buy_button('revir-' + r['slug'])}
-              <p>Hranice, navigácia a&nbsp;vzdialenosť k&nbsp;revíru sú v&nbsp;aplikácii.</p>
+              {buy_button('revir-' + r['slug'], '              ')}
+              <p>{buy_note}</p>
             </div>
           </div>
 {map_figure(r)}
@@ -664,11 +914,7 @@ def detail_page(r, reviry, org_slugs, tok_slugs):
       <div class="container revir-inapp__grid">
         <h2 id="inapp-title" class="h3">V&nbsp;aplikácii pri revíri <span class="hydro">{name}</span> uvidíte</h2>
         <ul class="ticks ticks--light">
-          <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Presné hranice revíru na mape aj na satelite</span></li>
-          <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Popis a&nbsp;obmedzenia lovu z&nbsp;rybárskeho poriadku</span></li>
-          <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Obdobie lovu a&nbsp;dennú dobu lovu</span></li>
-          <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Navigáciu k&nbsp;vode cez Google Maps</span></li>
-          <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Vzdialenosť od vás a&nbsp;ďalšie revíry v&nbsp;okolí</span></li>
+{inapp}
         </ul>
       </div>
     </section>
@@ -1043,6 +1289,8 @@ def main():
     parser.add_argument("--xml", type=Path, default=Path(os.environ.get("REVIRY_XML", DEFAULT_XML)),
                         help=f"cesta k databáze (predvolená: {DEFAULT_XML.relative_to(ROOT.parent)} vedľa projektu)")
     xml_path = parser.parse_args().xml.expanduser()
+    if CENNIK not in ("jednorazovo", "novy"):
+        raise SystemExit(f'Chyba: CENNIK musí byť "jednorazovo" alebo "novy", nie "{CENNIK}". Nič sa nezapísalo.')
     if not xml_path.is_file():
         print(f"Databáza {xml_path} sa nenašla, stránky revírov ostali bez zmeny.", file=sys.stderr)
         sys.exit(2)
@@ -1098,10 +1346,15 @@ def main():
 
     # CSS and JS links carry ?v=<content hash>: a changed file gets a new address, so browsers (and
     # the site preview) load it instead of an old cached copy. The hand-written pages are kept current too
+    # Prices and store buttons follow the switches at the top of this file (between the <!-- gen:… --> marks)
     for path in ("index.html", "privacy_policy.html"):
-        files[path] = (ROOT / path).read_text(encoding="utf-8")
+        text = fill((ROOT / path).read_text(encoding="utf-8"), path, regions(path, len(reviry)))
+        files[path] = re.sub(r"<script>[^<]*classList\.add\('js'\)[^<]*</script>", lambda m: HEAD_JS, text, count=1)
     # The number of revíry on the homepage follows the database: "349 kaprových…", "spolu 349."
-    files["index.html"] = re.sub(r"\d+(?=(?: |&nbsp;)kaprových)|(?<=spolu )\d+(?=\.)", str(len(reviry)), files["index.html"])
+    home = re.sub(r"\d+(?=(?: |&nbsp;)kaprových)|(?<=spolu )\d+(?=\.)", str(len(reviry)), files["index.html"])
+    home = re.sub(r'"operatingSystem": "[^"]*"', '"operatingSystem": "%s"' % ("Android, iOS" if APP_STORE_URL else "Android"), home)
+    price = "0" if novy() else CENA_JEDNORAZOVO.replace(",", ".")
+    files["index.html"] = re.sub(r'"offers": \{[^}]*\}', '"offers": { "@type": "Offer", "price": "%s", "priceCurrency": "EUR" }' % price, home)
     versions = {}
     for path in ("assets/css/style.css", "assets/js/main.js", "assets/js/reviry.js", "assets/js/reviry-data.js"):
         content = files.get(path) or (ROOT / path).read_text(encoding="utf-8")

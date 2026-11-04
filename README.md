@@ -42,6 +42,21 @@ Iné umiestnenie databázy: `python3 tools/build_reviry.py --xml /cesta/k/reviry
 
 Web beží zadarmo na GitHub Pages: https://apollush.github.io/RybarskeReviry/. GitHub ho zverejní znova pri každom nahraní do vetvy `main`, zvyčajne do dvoch minút. Prázdny súbor `.nojekyll` zabezpečí, že GitHub súbory zverejní bez úprav. Doména rybarskereviry.sk na tento web zatiaľ nesmeruje.
 
+## Cenník a iPhone (prepínače)
+
+Na začiatku `tools/build_reviry.py` sú prepínače. Generátor podľa nich zostaví všetky ceny a tlačidlá do obchodov na všetkých stránkach. V `index.html` a `privacy_policy.html` prepisuje časti medzi značkami `<!-- gen:… -->` a `<!-- /gen:… -->`, tie preto ručne neupravujte.
+
+| Prepínač | Čo robí |
+|---|---|
+| `CENNIK` | `"jednorazovo"` = dnešných 6,99 € v Google Play. `"novy"` = zadarmo + Plná verzia za 5,99 € ročne alebo 14,99 € navždy. Nový zapnite až v deň, keď ho má aj aplikácia v Google Play. |
+| `APP_STORE_URL` | Odkaz na aplikáciu v App Store. Prázdny = na iPhone a iPade tlačidlá ponúkajú e-mail („Na iPhone čoskoro“). Vyplnený = tlačidlá do App Store aj Google Play, telefón vidí len svoj obchod, počítač oba. |
+| `APP_STORE_ID` | Číslo aplikácie v App Store pre banner v Safari. |
+| `APP_STORE_PT` | Provider token z App Store Connect, aby bolo vidno, odkiaľ ľudia prišli (`ct` je miesto na webe). |
+| `APP_STORE_PREDOBJEDNAVKA` | `True`, kým je v App Store len predobjednávka: tlačidlo „Predobjednať v App Store“. |
+| `CENA_JEDNORAZOVO`, `CENA_ROCNE`, `CENA_NAVZDY` | Ceny s DPH. Na webe sa píšu len odtiaľto. |
+
+Po zmene prepínača spustite dvojklikom `tools/aktualizuj-reviry.command`. Web prebuduje a nahrá na GitHub.
+
 ## Lokálny náhľad
 
 ```bash
