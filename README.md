@@ -9,6 +9,8 @@ Web Android aplikácie **Rybárske Revíry SK**. Je to statická stránka v čis
 | `index.html` | Úvodná stránka |
 | `reviry.html` | Zoznam revírov s vyhľadávaním (generovaný) |
 | `revir/*.html` | Stránka každého revíru (generované). Stará adresa premenovaného revíru presmeruje na novú, pri zrušenom revíri povie, že už v zozname nie je. |
+| `organizacie.html`, `organizacia/*.html` | Revíry podľa organizácie, ktorá ich obhospodaruje (generované, bez súradníc) |
+| `toky.html`, `tok/*.html` | Všetky úseky toku, ktorý má aspoň tri revíry (generované, bez súradníc) |
 | `404.html` | Stránka pre neexistujúcu adresu (generovaná). Na Websupporte ju zapne `.htaccess`, GitHub Pages ju použije sám. |
 | `privacy_policy.html` | Ochrana súkromia. Adresu nemeňte, odkazuje na ňu Google Play. |
 | `assets/` | Štýly, skripty, ikony a snímky obrazovky aplikácie. `assets/img/og-image.jpg` je obrázok pri zdieľaní odkazu, vzniká z `tools/og-image.html`. |

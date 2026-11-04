@@ -13,6 +13,8 @@ Outputs
   reviry.html               list of all revíry with search and filters
   revir/<slug>.html         one page per revír (what people land on from Google); an address a revír no
                             longer uses keeps a page that sends visitors to its new name or says it's gone
+  organizacie.html, organizacia/<slug>.html   revíry of each organization (no coordinates)
+  toky.html, tok/<slug>.html                  all stretches of each river with at least three revíry
   404.html                  shown for an address that doesn't exist
   assets/js/reviry-data.js  small search index (name, number, character, slug)
   data/adresy-revirov.json  every address each revír ever had (revír number -> slugs)
@@ -391,12 +393,13 @@ def buy_button(cta, label="Chcem aplikáciu"):
             </a>"""
 
 
-def row(r, href):
+def row(r, href, more=""):
+    """One revír in a list; more: details after the number, e.g. " · rieka" on an organization's page."""
     t = TYPES[r["type"]]
     return (f'<li data-search="{esc(search_key(r))}" data-type="{t["code"]}">'
             f'<a class="revir-row" href="{href}">'
             f'<span class="revir-row__name">{nbsp(r["name"])}</span>'
-            f'<span class="revir-row__num">{esc(r["number"])}</span>'
+            f'<span class="revir-row__num">{esc(r["number"])}{more}</span>'
             f'<span class="revir-row__type"><span class="type-dot type-dot--{t["code"]}" aria-hidden="true"></span>{t["adj"]}</span>'
             f'</a></li>')
 
@@ -573,14 +576,16 @@ def related_lists(r, reviry):
     return same, near
 
 
-def detail_page(r, reviry):
+def detail_page(r, reviry, org_slugs, tok_slugs):
     t = TYPES[r["type"]]
     name = nbsp(r["name"])
     facts = [("Charakter", nbsp(t["water"]))]
     if r["water"]:
         facts.append(("Typ vody", nbsp(r["water"])))
     if r["organizations"]:
-        facts.append(("Organizácia", "<br>".join(nbsp(o) for o in r["organizations"])))
+        # An organization with its own page (all of data/organizacie.json) links to the list of its revíry
+        facts.append(("Organizácia", "<br>".join(f'<a href="../organizacia/{org_slugs[o]}.html">{nbsp(o)}</a>' if o in org_slugs
+                                                  else nbsp(o) for o in r["organizations"])))
     if r["area"]:
         facts.append(("Rozloha", esc(r["area"])))
     facts_html = "\n".join(f'            <div><dt>{label}</dt><dd>{value}</dd></div>' for label, value in facts)
@@ -610,10 +615,14 @@ def detail_page(r, reviry):
           <h2{title_id} class="h3">{heading}</h2>
           <a class="text-link text-link--sm" href="../reviry.html">Celý zoznam revírov</a>
         </div>""" if i == 0 else f'        <h2 class="h3 revir-related__sub">{heading}</h2>')
+        all_link = ""
+        if items is same and r["base"] in tok_slugs:
+            all_link = (f'\n        <a class="text-link text-link--sm revir-related__all" href="../tok/{tok_slugs[r["base"]]}.html">'
+                        f'Všetky revíry na toku {nbsp(r["base"])}</a>')
         related_html.append(f"""{head}
         <ul class="revir-rows revir-rows--cols">
 {rows}
-        </ul>""")
+        </ul>{all_link}""")
     related = ""
     if related_html:
         related = f"""    <section class="section-sm revir-related" aria-labelledby="related-title">
@@ -739,6 +748,10 @@ def list_page(reviry):
         </nav>
         <h1 id="list-title" class="h2">Zväzové rybárske revíry SRZ {ROK_REVIROV}</h1>
         <p class="list-hero__lead">{plural(n, 'Jeden', 'Všetky', 'Všetkých')} {n} kaprových a&nbsp;lipňových revírov SRZ s&nbsp;číslom revíru. Hľadajte podľa názvu toku, nádrže alebo čísla revíru.</p>
+        <p class="list-hero__links">
+          <a class="text-link text-link--sm" href="organizacie.html">Revíry podľa organizácie</a>
+          <a class="text-link text-link--sm" href="toky.html">Revíry podľa toku</a>
+        </p>
         <form class="revir-filter" role="search" action="reviry.html" method="get" data-revir-filter>
           <div class="search-field">
             <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
@@ -787,6 +800,152 @@ def list_page(reviry):
                      "Nájdite revír podľa názvu alebo čísla a pozrite si jeho polohu a popis."),
         canonical=f"{SITE}reviry.html", asset="", home="./", body=body, ld=ld, current="reviry",
         scripts=("assets/js/reviry-data.js", "assets/js/reviry.js"))
+
+
+def org_groups(reviry):
+    """Each organization of data/organizacie.json that looks after at least one revír -> its revíry,
+    organizations in alphabetical order (a revír with two organizations is on both pages)."""
+    names = set(load_json("organizacie.json").values())
+    groups = {}
+    for r in reviry:
+        for o in r["organizations"]:
+            if o in names:
+                groups.setdefault(o, []).append(r)
+    return dict(sorted(groups.items(), key=lambda kv: sort_key(kv[0])))
+
+
+def tok_groups(reviry):
+    """Each river (base name) with at least three revíry -> its stretches in order: č. 1, 1a, 1b, 2, ..."""
+    groups = {}
+    for r in reviry:
+        groups.setdefault(r["base"], []).append(r)
+
+    def stretch(r):
+        m = re.match(r"\s*č\.\s*(\d+)([a-z]*)", r["name"][len(r["base"]):])
+        return (int(m.group(1)), m.group(2), sort_key(r["name"])) if m else (0, "", sort_key(r["name"]))
+    return {base: sorted(items, key=stretch) for base, items in sorted(groups.items(), key=lambda kv: sort_key(kv[0]))
+            if len(items) >= 3}
+
+
+def group_page(*, path, title, description, heading, lead, crumb, items, more, cta, count):
+    """A list of revíry under one heading: an organization's revíry or all stretches of a river."""
+    rows = "\n".join("          " + row(r, f"../revir/{r['slug']}.html", more(r)) for r in items)
+    url = SITE + path
+    body = f"""    <section class="list-hero" aria-labelledby="list-title">
+      <div class="container">
+        <nav class="crumbs" aria-label="Omrvinková navigácia">
+          <ol>
+            <li><a href="../">Domov</a></li>
+            <li><a href="../reviry.html">Revíry</a></li>
+            <li aria-current="page">{nbsp(crumb)}</li>
+          </ol>
+        </nav>
+        <h1 id="list-title" class="h2">{heading}</h1>
+        <p class="list-hero__lead">{lead}</p>
+      </div>
+    </section>
+
+    <section class="revir-index revir-group" aria-label="Zoznam revírov">
+      <div class="container">
+        <ul class="revir-rows revir-rows--cols">
+{rows}
+        </ul>
+      </div>
+    </section>
+
+{cta_band(cta, count)}"""
+    ld = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "ItemList",
+                "name": html.unescape(re.sub(r"<[^>]+>", "", heading)),
+                "numberOfItems": len(items),
+                "itemListElement": [{"@type": "ListItem", "position": i + 1, "name": r["name"], "url": f"{SITE}revir/{r['slug']}.html"}
+                                    for i, r in enumerate(items)],
+            },
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    {"@type": "ListItem", "position": 1, "name": "Domov", "item": SITE},
+                    {"@type": "ListItem", "position": 2, "name": "Revíry", "item": SITE + "reviry.html"},
+                    {"@type": "ListItem", "position": 3, "name": crumb, "item": url},
+                ],
+            },
+        ],
+    }
+    return page(title=title, description=description, canonical=url, asset="../", home="../", body=body, ld=ld, current="revir")
+
+
+def org_page(org, slug, items, count):
+    n = len(items)
+    revirov = plural(n, "zväzový revír", "zväzové revíry", "zväzových revírov")
+    return group_page(
+        path=f"organizacia/{slug}.html",
+        title=f"Revíry {org} – zoznam zväzových revírov | Rybárske Revíry SK",
+        description=(f"Zoznam {n} zväzových revírov, ktoré obhospodaruje {org}, s číslami revírov, typom vody "
+                     "a odkazom na popis každého revíru." if n > 1 else
+                     f"Zväzový revír, ktorý obhospodaruje {org}, s číslom revíru, typom vody a odkazom na popis revíru."),
+        heading=f"Revíry, ktoré obhospodaruje {nbsp(org)}",
+        lead=(f"{nbsp(org)} obhospodaruje {n} {revirov}. Pri každom nájdete číslo revíru, typ vody a&nbsp;popis. "
+              "Presné hranice sú v&nbsp;aplikácii Rybárske Revíry SK."),
+        crumb=org, items=items, more=lambda r: f" · {esc(r['water'].lower())}" if r["water"] else "",
+        cta=f"organizacia-{slug}-cta", count=count)
+
+
+def tok_page(tok, slug, items, count):
+    n = len(items)
+    return group_page(
+        path=f"tok/{slug}.html",
+        title=f"{tok} – rybárske revíry a čísla revírov | Rybárske Revíry SK",
+        description=(f"Všetky zväzové revíry na toku {tok}: {n} {plural(n, 'úsek', 'úseky', 'úsekov')} s číslami revírov, "
+                     "typom vody a organizáciou. Presné hranice úsekov v aplikácii Rybárske Revíry SK."),
+        heading=f"{nbsp(tok)}: všetky revíry",
+        lead=(f"Na toku {nbsp(tok)} {plural(n, 'je', 'sú', 'je')} {n} "
+              f"{plural(n, 'zväzový revír', 'zväzové revíry', 'zväzových revírov')} SRZ. "
+              "Každý úsek má vlastné číslo revíru a&nbsp;môže mať iné pravidlá lovu."),
+        crumb=tok, items=items,
+        more=lambda r: "".join(f" · {nbsp(x)}" for x in ([r["water"].lower()] if r["water"] else []) + r["organizations"]),
+        cta=f"tok-{slug}-cta", count=count)
+
+
+def overview_page(*, path, title, description, heading, lead, groups, slugs, folder, plain):
+    """organizacie.html and toky.html: every organization or river with the number of its revíry."""
+    rows = "\n".join(
+        f'          <li><a class="revir-row{" revir-row--plain" if plain else ""}" href="{folder}/{slugs[name]}.html">'
+        f'<span class="revir-row__name">{nbsp(name)}</span>'
+        f'<span class="revir-row__num">{len(items)} {plural(len(items), "revír", "revíry", "revírov")}</span></a></li>'
+        for name, items in groups.items())
+    body = f"""    <section class="list-hero" aria-labelledby="list-title">
+      <div class="container">
+        <nav class="crumbs" aria-label="Omrvinková navigácia">
+          <ol>
+            <li><a href="./">Domov</a></li>
+            <li><a href="reviry.html">Revíry</a></li>
+            <li aria-current="page">{heading}</li>
+          </ol>
+        </nav>
+        <h1 id="list-title" class="h2">{heading}</h1>
+        <p class="list-hero__lead">{lead}</p>
+      </div>
+    </section>
+
+    <section class="revir-index revir-group" aria-label="{heading}">
+      <div class="container">
+        <ul class="revir-rows revir-rows--cols">
+{rows}
+        </ul>
+      </div>
+    </section>"""
+    ld = {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": heading,
+        "numberOfItems": len(groups),
+        "itemListElement": [{"@type": "ListItem", "position": i + 1, "name": name, "url": f"{SITE}{folder}/{slugs[name]}.html"}
+                            for i, name in enumerate(groups)],
+    }
+    return page(title=title, description=description, canonical=SITE + path, asset="", home="./", body=body, ld=ld, current="revir")
 
 
 def note_page(*, title, heading, text, links, asset, home, canonical=None, head=""):
@@ -885,15 +1044,40 @@ def main():
         print("Upozornenie:", w, file=sys.stderr)
 
     # Everything is built in memory first, so a broken database never leaves the site half updated
-    files = {f"revir/{r['slug']}.html": detail_page(r, reviry) for r in reviry}
+    orgs, toky = org_groups(reviry), tok_groups(reviry)
+    org_slugs = {o: slugify(o) for o in orgs}
+    tok_slugs = {t: slugify(t) for t in toky}
+    if len(set(org_slugs.values())) != len(org_slugs) or len(set(tok_slugs.values())) != len(tok_slugs):
+        raise SystemExit("Chyba: dve organizácie alebo dva toky by mali rovnakú adresu stránky, nič sa nezapísalo.")
+    files = {f"revir/{r['slug']}.html": detail_page(r, reviry, org_slugs, tok_slugs) for r in reviry}
     files["data/adresy-revirov.json"], moved = old_addresses(reviry)
     files.update(moved)
     files["reviry.html"] = list_page(reviry)
     files["404.html"] = not_found_page()
+    for o, items in orgs.items():
+        files[f"organizacia/{org_slugs[o]}.html"] = org_page(o, org_slugs[o], items, len(reviry))
+    for t, items in toky.items():
+        files[f"tok/{tok_slugs[t]}.html"] = tok_page(t, tok_slugs[t], items, len(reviry))
+    files["organizacie.html"] = overview_page(
+        path="organizacie.html", title="Rybárske revíry podľa organizácie SRZ | Rybárske Revíry SK",
+        description=(f"Zväzové revíry SRZ podľa organizácie, ktorá ich obhospodaruje: {len(orgs)} organizácií, "
+                     "pri každej počet revírov a zoznam revírov s číslami."),
+        heading="Revíry podľa organizácie SRZ",
+        lead="Zväzové revíry podľa organizácie SRZ, ktorá ich obhospodaruje. Pri každej nájdete zoznam jej revírov s&nbsp;číslami revírov.",
+        groups=orgs, slugs=org_slugs, folder="organizacia", plain=True)
+    files["toky.html"] = overview_page(
+        path="toky.html", title="Rybárske revíry podľa toku – Váh, Hron, Dunaj a ďalšie | Rybárske Revíry SK",
+        description=(f"Zväzové revíry SRZ podľa toku: {len(toky)} tokov s aspoň tromi revírmi, pri každom zoznam úsekov "
+                     "s číslami revírov, typom vody a organizáciou."),
+        heading="Revíry podľa toku",
+        lead="Toky, na ktorých sú aspoň tri zväzové revíry SRZ. Pri každom nájdete všetky jeho úseky s&nbsp;číslami revírov.",
+        groups=toky, slugs=tok_slugs, folder="tok", plain=False)
     index = [{"n": r["name"], "c": r["number"], "t": TYPES[r["type"]]["code"], "s": r["slug"], "k": search_key(r)} for r in reviry]
     files["assets/js/reviry-data.js"] = ("// Generated by tools/build_reviry.py: names and numbers for the revír search\nwindow.RR_REVIRY = "
                                          + json.dumps(index, ensure_ascii=False, separators=(",", ":")) + ";\n")
-    urls = [SITE, SITE + "reviry.html", SITE + "privacy_policy.html"] + [f"{SITE}revir/{r['slug']}.html" for r in reviry]
+    urls = ([SITE, SITE + "reviry.html", SITE + "privacy_policy.html"] + [f"{SITE}revir/{r['slug']}.html" for r in reviry]
+            + [SITE + "organizacie.html"] + [f"{SITE}organizacia/{s}.html" for s in org_slugs.values()]
+            + [SITE + "toky.html"] + [f"{SITE}tok/{s}.html" for s in tok_slugs.values()])
     files["sitemap.xml"] = ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
                             + "".join(f"  <url><loc>{u}</loc></url>\n" for u in urls) + "</urlset>\n")
     files["robots.txt"] = f"User-agent: *\nAllow: /\n\nSitemap: {SITE}sitemap.xml\n"
@@ -925,20 +1109,29 @@ def main():
     for path, content in files.items():
         if leak and set(leak.findall(content)) - own.get(path, set()):
             raise SystemExit(f"Chyba: do {path} by sa dostali súradnice iných revírov, nič sa nezapísalo.")
+    # Pages of organizations and rivers carry no coordinates at all, not even ones the database doesn't know
+    for path, content in files.items():
+        if path.startswith(("organizacia/", "tok/")) or path in ("organizacie.html", "toky.html"):
+            if re.search(r"\b\d{1,2}\.\d{4,}\b", content):
+                raise SystemExit(f"Chyba: v {path} sú súradnice, nič sa nezapísalo.")
 
-    out_dir = ROOT / "revir"
-    out_dir.mkdir(exist_ok=True)
-    keep = {Path(p).name for p in files if p.startswith("revir/")}
-    for old in out_dir.glob("*.html"):
-        if old.name not in keep:
-            old.unlink()
+    # A folder holds only what this build made: an organization or river that is gone loses its page.
+    # A revír never does, its old addresses stay (data/adresy-revirov.json)
+    for folder in ("revir", "organizacia", "tok"):
+        out_dir = ROOT / folder
+        out_dir.mkdir(exist_ok=True)
+        keep = {Path(p).name for p in files if p.startswith(folder + "/")}
+        for old in out_dir.glob("*.html"):
+            if old.name not in keep:
+                old.unlink()
     for path, content in files.items():
         target = ROOT / path
         if not target.is_file() or target.read_text(encoding="utf-8") != content:
             target.write_text(content, encoding="utf-8")
     kapr = sum(r["type"] == "kaprovy" for r in reviry)
-    print(f"{len(reviry)} revírov ({kapr} kaprových, {len(reviry) - kapr} lipňových), {len(moved)} starých adries: "
-          "reviry.html, revir/*.html, 404.html, assets/js/reviry-data.js, data/adresy-revirov.json, sitemap.xml, robots.txt, "
+    print(f"{len(reviry)} revírov ({kapr} kaprových, {len(reviry) - kapr} lipňových), {len(moved)} starých adries, "
+          f"{len(orgs)} organizácií, {len(toky)} tokov: reviry.html, revir/*.html, organizacie.html, organizacia/*.html, "
+          "toky.html, tok/*.html, 404.html, assets/js/reviry-data.js, data/adresy-revirov.json, sitemap.xml, robots.txt, "
           "počet revírov a verzie CSS a JS v index.html a privacy_policy.html")
 
 

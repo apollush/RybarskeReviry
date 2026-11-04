@@ -1815,6 +1815,14 @@ html:not(.js) .tour-panel[hidden] { display: grid; }
 .empty-state p + p { margin-top: 8px; }
 .empty-state strong { color: var(--ink); }
 
+/* Revíry by organization and by river */
+.list-hero__links { display: flex; flex-wrap: wrap; gap: 0 24px; margin-top: 8px; }
+.revir-group { padding-bottom: clamp(56px, 8vw, 96px); }
+.revir-row--plain .revir-row__name { color: var(--ink); font-style: normal; }
+.revir-related__all { margin-top: 8px; }
+.revir-facts dd a { text-decoration-color: var(--revir); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.revir-facts dd a:hover { text-decoration-color: currentColor; }
+
 /* 404 and an old revír address: a short note and the ways on */
 .page-note { padding-bottom: clamp(72px, 12vw, 160px); }
 .page-note__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
