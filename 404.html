@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script>(function () { var b = document.createElement('base'); b.href = location.pathname.indexOf('/RybarskeReviry/') === 0 ? '/RybarskeReviry/' : '/'; document.head.appendChild(b); document.addEventListener('DOMContentLoaded', function () { document.querySelectorAll('a[href^="#"]').forEach(function (a) { a.href = location.pathname + a.getAttribute('href'); }); }); })();</script>
+  <script>(function () { var b = document.createElement('base'); b.href = location.pathname.indexOf('/RybarskeReviry/') === 0 ? '/RybarskeReviry/' : '/'; document.head.appendChild(b); document.addEventListener('DOMContentLoaded', function () { document.querySelectorAll('a[href^="#"]').forEach(function (a) { a.href = location.pathname + a.getAttribute('href'); }); document.querySelectorAll('img[data-src]').forEach(function (i) { i.src = i.getAttribute('data-src'); }); document.querySelectorAll('script[data-src]').forEach(function (s) { var js = document.createElement('script'); js.src = s.getAttribute('data-src'); document.body.appendChild(js); }); }); })();</script>
   <title>Stránka sa nenašla | Rybárske Revíry SK</title>
   <meta name="description" content="Revír mohol zmeniť názov alebo adresu. Nájdite ho v zozname podľa názvu alebo čísla.">
   <meta name="robots" content="noindex">
@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..100,400..800;1,62..100,400..800&display=swap">
-  <link rel="stylesheet" href="assets/css/style.css?v=cfc36d8e">
+  <script>document.write('<link rel="stylesheet" href="assets/css/style.css?v=cfc36d8e">')</script>
   <script>document.documentElement.classList.add('js')</script>
 </head>
 <body>
@@ -42,7 +42,7 @@
   <header class="site-header">
     <div class="container header-inner">
       <a class="brand" href="./">
-        <img src="assets/img/icon-192.png" width="56" height="56" alt="">
+        <img data-src="assets/img/icon-192.png" width="56" height="56" alt="">
         <span class="brand__name">Rybárske <span>Revíry&nbsp;SK</span></span>
       </a>
       <button type="button" class="nav-toggle" aria-expanded="false" aria-controls="site-nav" data-nav-toggle>
@@ -90,7 +90,7 @@
   </footer>
 
   <div class="sticky-buy" data-sticky inert>
-    <img src="assets/img/icon-96.png" width="40" height="40" alt="">
+    <img data-src="assets/img/icon-96.png" width="40" height="40" alt="">
     <p class="sticky-buy__text"><strong>Rybárske Revíry SK</strong><span>6,99&nbsp;€ jednorazovo</span></p>
     <a class="btn-buy btn-buy--sm" data-cta="sticky" href="https://play.google.com/store/apps/details?id=sk.rr.rybarskereviry&amp;referrer=utm_source%3Drybarskereviry.sk%26utm_medium%3Dweb%26utm_content%3Dsticky">Stiahnuť</a>
   </div>
@@ -104,6 +104,6 @@
   </div>
 
 
-  <script src="assets/js/main.js?v=5d446f2c" defer></script>
+  <script data-src="assets/js/main.js?v=5d446f2c"></script>
 </body>
 </html>

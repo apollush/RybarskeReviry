@@ -124,7 +124,8 @@
         if (input.value.trim()) p.set('q', input.value.trim());
         if (type) p.set('t', type);
         const qs = p.toString();
-        window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+        // keeps #l-z2 and the like, so a link to a letter still lands there
+        window.history.replaceState(null, '', (qs ? `?${qs}` : window.location.pathname) + window.location.hash);
       } catch (e) { /* URL update is optional */ }
     };
 

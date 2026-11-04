@@ -985,12 +985,26 @@ def gone_page():
 
 # The 404 page is shown at any address (/revir/neexistuje.html, also under /RybarskeReviry/ on GitHub
 # Pages), so it sets <base> to the site's root before anything loads. Links to a section of the page
-# itself (#main) would follow the <base> to the homepage, so they get the page's own address back
+# itself (#main) would follow the <base> to the homepage, so they get the page's own address back.
+# The browser fetches a page's files ahead of its scripts, from the address it was opened at, so the
+# page's stylesheet, script and images go in only after <base> (not_found_assets)
 NOT_FOUND_HEAD = ("<script>(function () { var b = document.createElement('base'); "
                   "b.href = location.pathname.indexOf('/RybarskeReviry/') === 0 ? '/RybarskeReviry/' : '/'; "
                   "document.head.appendChild(b); document.addEventListener('DOMContentLoaded', function () { "
                   "document.querySelectorAll('a[href^=\"#\"]').forEach(function (a) { "
-                  "a.href = location.pathname + a.getAttribute('href'); }); }); })();</script>")
+                  "a.href = location.pathname + a.getAttribute('href'); }); "
+                  "document.querySelectorAll('img[data-src]').forEach(function (i) { i.src = i.getAttribute('data-src'); }); "
+                  "document.querySelectorAll('script[data-src]').forEach(function (s) { "
+                  "var js = document.createElement('script'); js.src = s.getAttribute('data-src'); document.body.appendChild(js); }); "
+                  "}); })();</script>")
+
+
+def not_found_assets(content):
+    """The 404 page's own files, written so that the browser asks for them only once <base> is set."""
+    content = re.sub(r'<link rel="stylesheet" href="(assets/[^"]+)">',
+                     r"""<script>document.write('<link rel="stylesheet" href="\1">')</script>""", content)
+    content = re.sub(r'<img src="(assets/[^"]+)"', r'<img data-src="\1"', content)
+    return re.sub(r'<script src="(assets/[^"]+)" defer></script>', r'<script data-src="\1"></script>', content)
 
 
 def not_found_page():
@@ -1096,6 +1110,7 @@ def main():
     stamp = lambda m: f'{m.group(1)}?v={versions[m.group(1)]}"' if m.group(1) in versions else m.group(0)
     for path in [p for p in files if p.endswith(".html")]:
         files[path] = asset_link.sub(stamp, files[path])
+    files["404.html"] = not_found_assets(files["404.html"])
 
     # A revír page shows only its own point; the list, the search index and the sitemap show none,
     # so the coordinates of the whole database never sit together in one file
