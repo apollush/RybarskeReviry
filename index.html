@@ -30,7 +30,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..100,400..800;1,62..100,400..800&display=swap">
-  <link rel="stylesheet" href="assets/css/style.css?v=d976d17e">
+  <link rel="stylesheet" href="assets/css/style.css?v=98c4723c">
   <link rel="preload" as="image" href="assets/img/screens/detail-600.jpg">
   <script>(function (h, ua) { h.classList.add('js'); if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) h.classList.add('is-ios'); else if (/Android/.test(ua)) h.classList.add('is-android'); })(document.documentElement, navigator.userAgent)</script>
 
@@ -232,10 +232,12 @@
           <h2 id="boundary-title" class="h2">Viete, kde váš revír končí?</h2>
           <p>Pri mnohých revíroch nestačí poznať začiatok a&nbsp;koniec toku. Patrí do revíru aj prítok? A&nbsp;štrkovisko o&nbsp;pár metrov ďalej? Rybárske Revíry SK zobrazí celú plochu revíru ako priehľadný polygón. Hranice sme zakreslili ručne, revír po revíri.</p>
 
+          <!-- gen:boundary-seg -->
           <div class="seg" role="group" aria-label="Zobrazenie revíru na mape">
             <button type="button" data-map-mode="pins" aria-pressed="false">Začiatok a&nbsp;koniec</button>
             <button type="button" data-map-mode="polygon" aria-pressed="true">Presné hranice</button>
           </div>
+          <!-- /gen:boundary-seg -->
           <p class="map-status" data-map-status aria-live="polite">Celá plocha revíru vrátane prítoku. Štrkovisko vedľa je iný revír.</p>
 
           <p class="where">
@@ -360,7 +362,9 @@
               </div>
               <div class="tour-text">
                 <h3>Celé Slovensko na jednej mape</h3>
+                <!-- gen:map-layers -->
                 <p>Revíry sú farebne rozlíšené do šiestich kategórií podľa SRZ. Kde je lov zakázaný, uvidíte zákazovú značku. Mapu si prepnete na terén alebo na satelit s&nbsp;názvami obcí a&nbsp;riek.</p>
+                <!-- /gen:map-layers -->
               </div>
             </div>
 
@@ -499,25 +503,52 @@
     <!-- Pricing -->
     <!-- gen:price -->
     <section id="cena" class="section section-dark pricing" aria-labelledby="price-title">
-      <div class="container price-grid">
-        <div class="price-main">
-          <h2 id="price-title" class="h2">Jedna platba. Aplikácia je vaša.</h2>
-          <p class="price"><span class="price__value">6,99&nbsp;€</span><span class="price__unit">jednorazovo v&nbsp;Google Play</span></p>
-          <p class="price-desc">Zaplatíte raz a&nbsp;aplikácia je vaša. Aktualizácie revírov, máp aj predpisov dostanete v&nbsp;cene.</p>
-          <a class="btn-buy" data-cta="price" href="https://play.google.com/store/apps/details?id=sk.rr.rybarskereviry&amp;referrer=utm_source%3Drybarskereviry.sk%26utm_medium%3Dweb%26utm_content%3Dprice">
-            <span class="btn-buy__label">Chcem aplikáciu</span>
-            <span class="btn-buy__meta">6,99&nbsp;€ jednorazovo · Google Play</span>
-          </a>
-          <p class="fine">Pre telefóny s&nbsp;Androidom. Podľa údajov v&nbsp;Google Play aplikácia nezdieľa žiadne údaje s&nbsp;tretími stranami.</p>
+      <div class="container">
+        <h2 id="price-title" class="h2">Jedna platba. Aplikácia je vaša.</h2>
+        <div class="why">
+          <div class="why-example">
+            <p class="why-example__lead">Takto je revír opísaný v&nbsp;rybárskom poriadku:</p>
+            <blockquote class="why-example__quote"><p>Čiastkové povodie Maliny (melioračný kanál) od cestného mosta Láb - Dúbrava po pramene. Kuchyňská a&nbsp;Pernecká Malina po pramene a&nbsp;štrkovisko Pernek.</p></blockquote>
+            <p class="why-example__ask">Patrí sem aj prítok? A&nbsp;štrkovisko o&nbsp;kúsok ďalej? V&nbsp;aplikácii uvidíte celú plochu revíru na mape.</p>
+            <a class="text-link text-link--sm" href="revir/kanal-malina-c-2.html">Pozrieť revír Kanál Malina č.&nbsp;2</a>
+          </div>
+          <ul class="why-list why-list--3">
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>
+              <h3>Celá plocha revíru</h3>
+              <p>Nielen začiatok a&nbsp;koniec. Vidíte aj prítoky a&nbsp;štrkoviská, ktoré do revíru patria, a&nbsp;tie, ktoré nie.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-locate"/></svg>
+              <h3>Kde som? pri vode</h3>
+              <p>Ťuknete a&nbsp;viete, v&nbsp;ktorom revíri stojíte, aj s&nbsp;jeho číslom. Bez listovania v&nbsp;poriadku.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+              <h3>Každý rok aktuálne</h3>
+              <p>Keď sa zmenia revíry alebo poriadok, hranice prekreslíme a&nbsp;dostanete ich v&nbsp;aktualizácii.</p>
+            </li>
+          </ul>
         </div>
-        <ul class="ticks" aria-label="Čo je v cene">
-        <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>349 kaprových a&nbsp;lipňových zväzových revírov</span></li>
-        <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Presné hranice revírov na mape aj na satelite</span></li>
-        <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Navigácia k&nbsp;vode cez Google Maps</span></li>
-        <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>98 druhov rýb s&nbsp;lovnými mierami a&nbsp;hájením</span></li>
-        <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Rybársky zákon, vyhláška a&nbsp;poriadky</span></li>
-        <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Všetky budúce aktualizácie</span></li>
-        </ul>
+        <div class="price-grid">
+          <div class="price-main">
+            <p class="price"><span class="price__value">6,99&nbsp;€</span><span class="price__unit">jednorazovo v&nbsp;Google Play</span></p>
+            <p class="price-desc">Zaplatíte raz a&nbsp;aplikácia je vaša. Aktualizácie revírov, máp aj predpisov dostanete v&nbsp;cene.</p>
+            <a class="btn-buy" data-cta="price" href="https://play.google.com/store/apps/details?id=sk.rr.rybarskereviry&amp;referrer=utm_source%3Drybarskereviry.sk%26utm_medium%3Dweb%26utm_content%3Dprice">
+              <span class="btn-buy__label">Chcem aplikáciu</span>
+              <span class="btn-buy__meta">6,99&nbsp;€ jednorazovo · Google Play</span>
+            </a>
+            <p class="fine">Pre telefóny s&nbsp;Androidom. Podľa údajov v&nbsp;Google Play aplikácia nezdieľa žiadne údaje s&nbsp;tretími stranami.</p>
+          </div>
+          <ul class="ticks" aria-label="Čo je v cene">
+            <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>349 kaprových a&nbsp;lipňových zväzových revírov</span></li>
+            <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Presné hranice revírov na mape aj na satelite</span></li>
+            <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Navigácia k&nbsp;vode cez Google Maps</span></li>
+            <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>98 druhov rýb s&nbsp;lovnými mierami a&nbsp;hájením</span></li>
+            <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Rybársky zákon, vyhláška a&nbsp;poriadky</span></li>
+            <li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>Všetky budúce aktualizácie</span></li>
+          </ul>
+        </div>
       </div>
     </section>
     <!-- /gen:price -->

@@ -53,7 +53,19 @@ Na začiatku `tools/build_reviry.py` sú prepínače. Generátor podľa nich zos
 | `APP_STORE_ID` | Číslo aplikácie v App Store pre banner v Safari. |
 | `APP_STORE_PT` | Provider token z App Store Connect, aby bolo vidno, odkiaľ ľudia prišli (`ct` je miesto na webe). |
 | `APP_STORE_PREDOBJEDNAVKA` | `True`, kým je v App Store len predobjednávka: tlačidlo „Predobjednať v App Store“. |
-| `CENA_JEDNORAZOVO`, `CENA_ROCNE`, `CENA_NAVZDY` | Ceny s DPH. Na webe sa píšu len odtiaľto. |
+| `CENA_JEDNORAZOVO`, `CENA_ROCNE`, `CENA_NAVZDY` | Ceny s DPH. Na webe sa píšu len odtiaľto. Veta „Menej ako 50 centov mesačne“ a „Od 3. roka ušetríte“ sa z nich počítajú samy. |
+| `OFFLINE` | `True`, keď aplikácia funguje bez signálu (hranice aj Kde som?). Pridá dlaždicu „Aj bez signálu“ a riadok do tabuľky nového cenníka. |
+| `GOOGLE_PLAY_HODNOTENIE`, `GOOGLE_PLAY_STIAHNUTIA` | Hodnotenie a počet stiahnutí z Google Play pod cenami nového cenníka, napríklad `"4,8"` a `"1 000"`. Prázdne = nezobrazí sa. Píšte len skutočné čísla. Hodnotenie v úvode stránky je napísané priamo v `index.html`. |
+
+V sekcii Cena je pri oboch cenníkoch blok „Prečo“: popis revíru Kanál Malina č. 2 z rybárskeho poriadku (z databázy, len časť o hraniciach) a dôvody, prečo sa hranice oplatia. Ak revír v databáze chýba, rámček s popisom sa vynechá.
+
+### Pred zapnutím nového cenníka over v aplikácii
+
+- začiatok a koniec revíru je zadarmo,
+- celá plocha revíru, Kde som? a satelit sú v Plnej verzii,
+- skúška: 3 revíry a 3-krát Kde som? zadarmo,
+- doterajší kupujúci majú Plnú verziu,
+- texty o údajoch a `privacy_policy.html` sú upravené.
 
 Po zmene prepínača spustite dvojklikom `tools/aktualizuj-reviry.command`. Web prebuduje a nahrá na GitHub.
 

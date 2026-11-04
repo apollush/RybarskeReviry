@@ -50,6 +50,13 @@ CENA_JEDNORAZOVO = "6,99"  # dnešný cenník v Google Play
 CENA_ROCNE = "5,99"        # nový cenník: Plná verzia na rok
 CENA_NAVZDY = "14,99"      # nový cenník: Plná verzia navždy
 
+# Zapni, keď aplikácia funguje bez signálu (hranice a Kde som? offline). Pridá riadok do tabuľky.
+OFFLINE = False
+
+# Hodnotenie a stiahnutia z Google Play. Prázdne = nezobrazí sa. Len skutočné čísla.
+GOOGLE_PLAY_HODNOTENIE = ""   # napr. "4,8"
+GOOGLE_PLAY_STIAHNUTIA = ""   # napr. "1 000" (ako píše Google Play: „1 000+“)
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_XML = ROOT.parent / "RybarskeReviry-databaza" / "reviry.xml"
 SITE = "https://rybarskereviry.sk/"
@@ -233,64 +240,163 @@ def tick(text):
     return f'<li><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>{text}</span></li>'
 
 
-def price_section(count):
-    """The #cena section of the homepage."""
+# The revír whose description from the rybársky poriadok the "Prečo" block quotes (left out if it's gone)
+WHY_EXAMPLE = "kanal-malina-c-2"
+# Where the part of a description about the revír's extent ends: the first sentence about rules or a web address
+RULES = re.compile(r"\blov|\bmier|zákaz|hájen|https?://|www\.", re.I)
+
+# The "Prečo" block, in both price lists: (icon, title, text, only once the app works without a signal)
+WHY_REASONS = [
+    ("i-layers", "Celá plocha revíru",
+     "Nielen začiatok a&nbsp;koniec. Vidíte aj prítoky a&nbsp;štrkoviská, ktoré do revíru patria, a&nbsp;tie, ktoré nie.", False),
+    ("i-locate", "Kde som? pri vode",
+     "Ťuknete a&nbsp;viete, v&nbsp;ktorom revíri stojíte, aj s&nbsp;jeho číslom. Bez listovania v&nbsp;poriadku.", False),
+    ("i-download", "Každý rok aktuálne",
+     "Keď sa zmenia revíry alebo poriadok, hranice prekreslíme a&nbsp;dostanete ich v&nbsp;aktualizácii.", False),
+    ("i-phone", "Aj bez signálu",
+     "Hranice aj <strong>Kde som?</strong> fungujú aj tam, kde nie je signál.", True),
+]
+
+# The table of the new price list: (row, Zadarmo, Plná verzia, only once the app works without a signal).
+# True = a tick, False = a dash, text as written ({count} = the number of revíry)
+COMPARE = [
+    ("Zoznam, popisy, obľúbené a&nbsp;navigácia k&nbsp;revíru", True, True, False),
+    ("Ryby, lovné miery, hájenie a&nbsp;predpisy", True, True, False),
+    ("Prehľad dňa", True, True, False),
+    ("Začiatok a&nbsp;koniec revíru na mape", True, True, False),
+    ("Celá plocha revíru vrátane prítokov a&nbsp;štrkovísk", "3 revíry", "všetkých {count}", False),
+    ("Kde som?", "3-krát", "bez obmedzenia", False),
+    ("Satelitná mapa", False, True, False),
+    ("Každý rok prekreslené hranice podľa nových poriadkov", False, True, False),
+    ("Funguje aj bez signálu", False, True, True),
+]
+
+
+def boundary_text(description):
+    """The opening sentences of a description, which say where the revír lies, without the rules after them."""
+    kept = []
+    for sentence in re.split(r"(?<=\.)\s+(?=[A-ZÁÄČĎÉÍĹĽŇÓÔŔŠŤÚÝŽ])", description):
+        if RULES.search(sentence):
+            break
+        kept.append(sentence)
+    return " ".join(kept)
+
+
+def why_block(example):
+    """Why the boundaries are worth it: a real description from the poriadok, then three reasons."""
+    parts = []
+    quote = boundary_text(example["description"]) if example else ""
+    if quote:
+        parts.append(f"""  <div class="why-example">
+    <p class="why-example__lead">Takto je revír opísaný v&nbsp;rybárskom poriadku:</p>
+    <blockquote class="why-example__quote"><p>{nbsp(quote)}</p></blockquote>
+    <p class="why-example__ask">Patrí sem aj prítok? A&nbsp;štrkovisko o&nbsp;kúsok ďalej? V&nbsp;aplikácii uvidíte celú plochu revíru na mape.</p>
+    <a class="text-link text-link--sm" href="revir/{example['slug']}.html">Pozrieť revír {nbsp(example['name'])}</a>
+  </div>""")
+    reasons = [r for r in WHY_REASONS if OFFLINE or not r[3]]
+    items = "\n".join(f"""    <li>
+      <svg class="icon" aria-hidden="true"><use href="#{icon}"/></svg>
+      <h3>{title}</h3>
+      <p>{text}</p>
+    </li>""" for icon, title, text, _ in reasons)
+    parts.append(f'  <ul class="why-list why-list--{len(reasons)}">\n{items}\n  </ul>')
+    return '<div class="why">\n' + "\n".join(parts) + "\n</div>"
+
+
+def cents(price):
+    return round(float(price.replace(",", ".")) * 100)
+
+
+def years_to_save():
+    """From which year paying once is cheaper than paying every year."""
+    n = 1
+    while n * cents(CENA_ROCNE) <= cents(CENA_NAVZDY):
+        n += 1
+    return n
+
+
+def compare_cell(value, full):
+    cls = ' class="compare__full"' if full else ""
+    if value is True:
+        value = '<svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span class="visually-hidden">áno</span>'
+    elif value is False:
+        value = '<span aria-hidden="true">–</span><span class="visually-hidden">nie</span>'
+    return f"<td{cls}>{value}</td>"
+
+
+def compare_table(count):
+    rows = "\n".join(f'    <tr><th scope="row">{name}</th>{compare_cell(free, False)}'
+                     f'{compare_cell(full.format(count=count) if isinstance(full, str) else full, True)}</tr>'
+                     for name, free, full, offline in COMPARE if OFFLINE or not offline)
+    return f"""<table class="compare">
+  <caption>Čo je zadarmo a&nbsp;čo v&nbsp;Plnej verzii</caption>
+  <thead>
+    <tr><th scope="col"><span class="visually-hidden">Funkcia</span></th><th scope="col">Zadarmo</th><th scope="col" class="compare__full">Plná verzia</th></tr>
+  </thead>
+  <tbody>
+{rows}
+  </tbody>
+</table>"""
+
+
+def rating_line():
+    """Rating and downloads from Google Play, only what is filled in at the top of this file."""
+    parts = []
+    if GOOGLE_PLAY_HODNOTENIE:
+        parts.append(f'Hodnotenie {esc(GOOGLE_PLAY_HODNOTENIE)}&nbsp;<span class="price-rating__star" aria-hidden="true">★</span> v&nbsp;Google Play')
+    if GOOGLE_PLAY_STIAHNUTIA:
+        downloads = esc(GOOGLE_PLAY_STIAHNUTIA).replace(" ", "&nbsp;")
+        parts.append(f"viac ako {downloads} stiahnutí" if parts else f"Viac ako {downloads} stiahnutí v&nbsp;Google Play")
+    return f'\n    <p class="price-rating">{" · ".join(parts)}</p>' if parts else ""
+
+
+def price_section(count, example):
+    """The #cena section of the homepage. example: the revír the "Prečo" block quotes."""
+    why = why_block(example).replace("\n", "\n    ")
     if not novy():
-        ticks = "\n".join("    " + tick(t) for t in (
+        ticks = "\n".join("        " + tick(t) for t in (
             f"{count} kaprových a&nbsp;lipňových zväzových revírov", "Presné hranice revírov na mape aj na satelite",
             "Navigácia k&nbsp;vode cez Google Maps", "98 druhov rýb s&nbsp;lovnými mierami a&nbsp;hájením",
             "Rybársky zákon, vyhláška a&nbsp;poriadky", "Všetky budúce aktualizácie"))
         return f"""<section id="cena" class="section section-dark pricing" aria-labelledby="price-title">
-  <div class="container price-grid">
-    <div class="price-main">
-      <h2 id="price-title" class="h2">Jedna platba. Aplikácia je vaša.</h2>
-      <p class="price"><span class="price__value">{eur(CENA_JEDNORAZOVO)}</span><span class="price__unit">jednorazovo v&nbsp;Google Play</span></p>
-      <p class="price-desc">Zaplatíte raz a&nbsp;aplikácia je vaša. Aktualizácie revírov, máp aj predpisov dostanete v&nbsp;cene.</p>
-      {buy_button('price', '      ')}
-      <p class="fine">{platforms()} Podľa údajov v&nbsp;Google Play aplikácia nezdieľa žiadne údaje s&nbsp;tretími stranami.</p>
-    </div>
-    <ul class="ticks" aria-label="Čo je v cene">
+  <div class="container">
+    <h2 id="price-title" class="h2">Jedna platba. Aplikácia je vaša.</h2>
+    {why}
+    <div class="price-grid">
+      <div class="price-main">
+        <p class="price"><span class="price__value">{eur(CENA_JEDNORAZOVO)}</span><span class="price__unit">jednorazovo v&nbsp;Google Play</span></p>
+        <p class="price-desc">Zaplatíte raz a&nbsp;aplikácia je vaša. Aktualizácie revírov, máp aj predpisov dostanete v&nbsp;cene.</p>
+        {buy_button('price', '        ')}
+        <p class="fine">{platforms()} Podľa údajov v&nbsp;Google Play aplikácia nezdieľa žiadne údaje s&nbsp;tretími stranami.</p>
+      </div>
+      <ul class="ticks" aria-label="Čo je v cene">
 {ticks}
-    </ul>
+      </ul>
+    </div>
   </div>
 </section>"""
-    free = "\n".join("        " + tick(t) for t in (
-        f"Zoznam a&nbsp;popisy všetkých {count} revírov", "Revíry na mape a&nbsp;najbližšie revíry", "Navigácia k&nbsp;revíru",
-        "98 druhov rýb s&nbsp;lovnými mierami a&nbsp;hájením", "Rybárske poriadky, zákon a&nbsp;vyhláška",
-        "Prehľad dňa: slnko, denná doba lovu, počasie", "3 ukážky presných hraníc"))
-    full = "\n".join("        " + tick(t) for t in (
-        "Všetko, čo je zadarmo", f"Presné hranice všetkých {count} revírov na mape aj na satelite",
-        "<strong>Kde som?</strong>: revír, v&nbsp;ktorom práve stojíte", "Všetky budúce funkcie a&nbsp;aktualizácie revírov"))
     stores = "Google Play alebo App Store" if APP_STORE_URL else "Google Play"
+    monthly = "Menej ako 50 centov mesačne. " if cents(CENA_ROCNE) < 12 * 50 else ""
     return f"""<section id="cena" class="section section-dark pricing pricing--free" aria-labelledby="price-title">
   <div class="container">
-    <h2 id="price-title" class="h2">Stiahnite zadarmo</h2>
-    <p class="price-desc">Revíry, ryby a&nbsp;predpisy máte zadarmo. Presné hranice a&nbsp;<strong>Kde som?</strong> odomknete v&nbsp;Plnej verzii, ročne alebo navždy.</p>
+    <h2 id="price-title" class="h2">Zadarmo nájdete revír. Plná verzia vám povie, kde končí.</h2>
+    <p class="price-desc">Hranice v&nbsp;rybárskom poriadku sú opísané slovami. Pri vode z&nbsp;nich ťažko zistíte, či prítok alebo štrkovisko ešte patrí do revíru. Plná verzia vám ukáže celú plochu revíru na mape a&nbsp;jedným ťuknutím povie, v&nbsp;ktorom revíri stojíte.</p>
+    {why}
+    {compare_table(count).replace(chr(10), chr(10) + '    ')}
     <div class="price-cards">
       <div class="price-card">
-        <h3 class="price-card__name">Zadarmo</h3>
-        <p class="price"><span class="price__value">{eur('0')}</span></p>
-        <p class="price-card__note">Stačí si aplikáciu stiahnuť</p>
-        <ul class="ticks" aria-label="Čo je zadarmo">
-{free}
-        </ul>
+        <p class="price"><span class="price__value">{eur(CENA_ROCNE)}</span><span class="price__unit">ročne</span></p>
+        <p class="price-card__note">{monthly}Zrušíte kedykoľvek.</p>
       </div>
       <div class="price-card price-card--full">
-        <h3 class="price-card__name">Plná verzia</h3>
-        <div class="price-option">
-          <p class="price"><span class="price__value">{eur(CENA_ROCNE)}</span><span class="price__unit">ročne</span></p>
-          <p class="price-card__note">Aktuálne revíry a&nbsp;pravidlá každý rok. Zrušíte kedykoľvek.</p>
-        </div>
-        <div class="price-option">
-          <p class="price"><span class="price__value">{eur(CENA_NAVZDY)}</span><span class="price__unit">navždy</span></p>
-          <p class="price-card__note">Jedna platba, bez predplatného.</p>
-        </div>
-        <ul class="ticks" aria-label="Čo je v Plnej verzii">
-{full}
-        </ul>
+        <p class="price-card__badge">Najvýhodnejšie</p>
+        <p class="price"><span class="price__value">{eur(CENA_NAVZDY)}</span><span class="price__unit">navždy</span></p>
+        <p class="price-card__note">Jedna platba. Od {years_to_save()}.&nbsp;roka ušetríte.</p>
       </div>
-    </div>
+    </div>{rating_line()}
     {buy_button('price', '    ')}
+    <h3 class="price-why">Prečo nie je všetko zadarmo?</h3>
+    <p class="price-why__text">Každú hranicu sme zakreslili ručne a&nbsp;každý rok ich prekresľujeme podľa nových poriadkov. Aplikácia nemá reklamy, udržiavajú ju tí, ktorí si kúpia Plnú verziu.</p>
     <p class="price-founders">Kúpili ste si aplikáciu za {eur(CENA_JEDNORAZOVO)}? Plnú verziu máte navždy, bez predplatného.</p>
     <p class="fine">Ceny sú vrátane DPH. Plnú verziu kúpite priamo v&nbsp;aplikácii. Ročná platba sa obnovuje automaticky a&nbsp;zrušíte ju kedykoľvek v&nbsp;nastaveniach {stores}. Bez reklám.</p>
   </div>
@@ -316,7 +422,9 @@ def faq_price():
     else:
         items += [
             faq("Koľko aplikácia stojí?",
-                f"Stiahnete ju zadarmo. Zoznam revírov, ryby, lovné miery, hájenie, predpisy a&nbsp;prehľad dňa používate bez platby. Presné hranice revírov a&nbsp;<strong>Kde som?</strong> odomknete v&nbsp;Plnej verzii za {eur(CENA_ROCNE)} ročne alebo {eur(CENA_NAVZDY)} navždy."),
+                f"Stiahnete ju zadarmo. Zoznam revírov, začiatok a&nbsp;koniec každého revíru na mape, ryby, lovné miery, hájenie, predpisy a&nbsp;prehľad dňa používate bez platby. Celú plochu revíru, <strong>Kde som?</strong> a&nbsp;satelitnú mapu odomknete v&nbsp;Plnej verzii za {eur(CENA_ROCNE)} ročne alebo {eur(CENA_NAVZDY)} navždy. Vyskúšať si ich môžete zadarmo na troch revíroch."),
+            faq("Prečo platiť, keď je popis revíru aj v&nbsp;poriadku?",
+                "Poriadok opisuje hranice slovami, napríklad od cestného mosta po pramene. Pri vode z&nbsp;toho ťažko poznáte, či prítok alebo štrkovisko ešte patrí do revíru. Aplikácia vám ukáže celú plochu revíru na mape a&nbsp;<strong>Kde som?</strong> vám povie, v&nbsp;ktorom revíri stojíte."),
             faq("Aký je rozdiel medzi ročnou platbou a&nbsp;platbou navždy?",
                 "Obe odomknú to isté, vrátane budúcich funkcií a&nbsp;aktualizácií revírov. Ročná platba sa obnovuje automaticky a&nbsp;zrušíte ju kedykoľvek. Platba navždy je jednorazová, bez predplatného."),
             faq(f"Už mám aplikáciu kúpenú za {eur(CENA_JEDNORAZOVO)}. Musím platiť znova?",
@@ -334,10 +442,29 @@ def home_description(count):
             f"{'Pre Android aj iPhone.' if APP_STORE_URL else 'Pre Android, čoskoro aj iPhone.'}")
 
 
-def regions(path, count):
+def boundary_seg():
+    """The switch of the illustrated map; with the new price list each view says whether it is free."""
+    free, full = ((' <span class="seg__tag">Zadarmo</span>', ' <span class="seg__tag seg__tag--full">Plná verzia</span>')
+                  if novy() else ("", ""))
+    return f"""<div class="seg" role="group" aria-label="Zobrazenie revíru na mape">
+  <button type="button" data-map-mode="pins" aria-pressed="false">Začiatok a&nbsp;koniec{free}</button>
+  <button type="button" data-map-mode="polygon" aria-pressed="true">Presné hranice{full}</button>
+</div>"""
+
+
+def map_layers():
+    """The text next to the screenshot of the map of revíry; the satellite map is in the Plná verzia."""
+    layers = "na terén, v&nbsp;Plnej verzii aj na satelit" if novy() else "na terén alebo na satelit"
+    return (f"<p>Revíry sú farebne rozlíšené do šiestich kategórií podľa SRZ. Kde je lov zakázaný, uvidíte zákazovú značku. "
+            f"Mapu si prepnete {layers} s&nbsp;názvami obcí a&nbsp;riek.</p>")
+
+
+def regions(path, reviry):
     """What goes between the <!-- gen:… --> marks of the hand-written pages."""
     if path == "privacy_policy.html":
         return {"app-banner": app_banner(), "header-buy": small_buttons("privacy")}
+    count = len(reviry)
+    example = next((r for r in reviry if r["slug"] == WHY_EXAMPLE), None)
     phones_li = f'<li><svg class="icon" aria-hidden="true"><use href="#i-phone"/></svg><span>{platforms(False)}</span></li>'
     return {
         "description": f'<meta name="description" content="{esc(home_description(count))}">',
@@ -345,7 +472,9 @@ def regions(path, count):
         "header-buy": small_buttons("header"),
         "hero-buy": buy_button("hero"),
         "hero-phones": phones_li,
-        "price": price_section(count),
+        "boundary-seg": boundary_seg(),
+        "map-layers": map_layers(),
+        "price": price_section(count, example),
         "faq-price": faq_price(),
         "final-buy": buy_button("final"),
         "sticky": sticky_bar(""),
@@ -831,8 +960,9 @@ def detail_page(r, reviry, org_slugs, tok_slugs):
     facts_html = "\n".join(f'            <div><dt>{label}</dt><dd>{value}</dd></div>' for label, value in facts)
     chip = t["label"] + (" · hraničný" if r["border"] else "")
     if novy():
-        buy_note = "Revír nájdete v&nbsp;aplikácii zadarmo. Presné hranice a&nbsp;<strong>Kde som?</strong> sú v&nbsp;Plnej verzii."
-        inapp = ["Presné hranice revíru na mape aj na satelite (Plná verzia)",
+        buy_note = "Začiatok a&nbsp;koniec revíru uvidíte v&nbsp;aplikácii zadarmo. Celú plochu revíru a&nbsp;<strong>Kde som?</strong> v&nbsp;Plnej verzii."
+        inapp = ["Začiatok a&nbsp;koniec revíru na mape",
+                 "Celú plochu revíru na mape aj na satelite (Plná verzia)",
                  "<strong>Kde som?</strong>: či stojíte práve v&nbsp;tomto revíri (Plná verzia)"]
     else:
         buy_note = "Hranice, navigácia a&nbsp;vzdialenosť k&nbsp;revíru sú v&nbsp;aplikácii."
@@ -1348,7 +1478,7 @@ def main():
     # the site preview) load it instead of an old cached copy. The hand-written pages are kept current too
     # Prices and store buttons follow the switches at the top of this file (between the <!-- gen:… --> marks)
     for path in ("index.html", "privacy_policy.html"):
-        text = fill((ROOT / path).read_text(encoding="utf-8"), path, regions(path, len(reviry)))
+        text = fill((ROOT / path).read_text(encoding="utf-8"), path, regions(path, reviry))
         files[path] = re.sub(r"<script>[^<]*classList\.add\('js'\)[^<]*</script>", lambda m: HEAD_JS, text, count=1)
     # The number of revíry on the homepage follows the database: "349 kaprových…", "spolu 349."
     home = re.sub(r"\d+(?=(?: |&nbsp;)kaprových)|(?<=spolu )\d+(?=\.)", str(len(reviry)), files["index.html"])
